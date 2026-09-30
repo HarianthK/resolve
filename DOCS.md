@@ -51,11 +51,25 @@ be there.
 
 ## Caching is what makes the real thing fast
 
-Every lookup here starts at a root server, which is three round trips for
-most names. A real resolver remembers every referral and answer for its TTL.
-This one keeps just the referrals, keyed by zone, so a CNAME to another name
-under `.org` starts at the `.org` server it already found. The TTL column in
-the output is the server saying how long that would be safe to keep.
+A lookup from nothing is three round trips for most names: root, top-level
+domain, the name's own servers. A real resolver remembers every referral and
+answer for its TTL, the number each record carries saying how many seconds it
+may be kept, and this one now does too.
+
+Answers are kept by name and type until their TTL is up, and a cached answer is
+returned with the seconds it has left rather than the TTL it arrived with, as a
+real resolver's is. Referrals are kept by zone with their own expiry, which is
+usually far longer: `.com`'s name servers are good for two days, a site's
+answer often for five minutes. So after an answer expires, the next lookup
+starts at the site's own servers, one packet; only when those expire too does it
+go back to `.com`, and only after two days to the root. An alias is kept for as
+long as both the alias and what it points at are valid.
+
+The test for this does not touch the network. A scripted fake answers as the
+root, `.com` and a site would, counts every packet, and a clock that the test
+controls jumps forward past each expiry in turn. It expects three packets, then
+none, then one, then two, and each wrong expiry rule breaks a different one of
+those.
 
 ## Random source ports and IDs are the security
 

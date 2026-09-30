@@ -1,9 +1,11 @@
 # A DNS resolver that starts at the root servers and follows referrals itself.
 # Run: python resolve.py example.com   (add -v to see every hop). DOCS.md explains the format.
+import math
 import random
 import socket
 import struct
 import sys
+import time
 
 ROOTS = {"a": "198.41.0.4", "b": "170.247.170.2", "c": "192.33.4.12", "d": "199.7.91.13", "e": "192.203.230.10",
          "f": "192.5.5.241", "g": "192.112.36.4", "h": "198.97.190.53", "i": "192.36.148.17", "j": "192.58.128.30",
@@ -11,7 +13,11 @@ ROOTS = {"a": "198.41.0.4", "b": "170.247.170.2", "c": "192.33.4.12", "d": "199.
 A, NS, CNAME, MX, TXT, AAAA = 1, 2, 5, 15, 16, 28
 TYPE_NAMES = {A: "A", NS: "NS", CNAME: "CNAME", AAAA: "AAAA", 6: "SOA", MX: "MX", TXT: "TXT"}
 # Referrals seen so far, zone -> name server addresses, so a second lookup need not start at the root.
-known = {"": list(ROOTS.values())}
+# Referrals seen so far, zone -> (expiry, name server addresses), so a later lookup can start
+# below the root. The root never expires. Answers are kept the same way, until their TTL is up.
+known = {"": (math.inf, list(ROOTS.values()))}
+answers = {}
+clock = time.monotonic  # a test swaps this to jump forward without waiting
 
 
 def build_query(name, qtype=A):
@@ -103,34 +109,49 @@ def _read_exactly(sock, n):
     return buf
 
 
+def remember_answer(key, records):
+    answers[key] = (clock() + min(r["ttl"] for r in records), records)
+    return records
+
+
 def resolve(name, qtype=A, verbose=False, depth=0):
     if depth > 8: raise RuntimeError("too many CNAME or referral hops")
     name = name.rstrip(".").lower()
-    # Start from the closest zone already seen: "" (the root) at worst.
-    zone = next(z for z in sorted(known, key=len, reverse=True) if name == z or name.endswith("." + z) or z == "")
-    servers = known[zone]
+    now = clock()
+    key = (name, qtype)
+    if key in answers and answers[key][0] > now:
+        expires, records = answers[key]
+        if verbose: print(f"  {name} {TYPE_NAMES.get(qtype, qtype)} from the cache, {int(expires - now)}s left")
+        # A cached answer shows the time it has left, as a real resolver's does.
+        return [dict(r, ttl=int(expires - now)) for r in records]
+    # Start from the closest zone still in date: "" (the root) at worst.
+    live = [z for z, (expires, _) in known.items() if expires > now]
+    zone = next(z for z in sorted(live, key=len, reverse=True) if name == z or name.endswith("." + z) or z == "")
+    servers = known[zone][1]
     while True:
         server = random.choice(servers)
         reply = ask(server, name, qtype, verbose=verbose)
         if verbose: print(f"  {server:<16} {name} {TYPE_NAMES.get(qtype, qtype)} -> {len(reply['answers'])} answers, {len(reply['authority'])} authority, {len(reply['additional'])} glue")
         if reply["rcode"] == 3: raise LookupError(f"{name} does not exist (NXDOMAIN)")
         wanted = [r for r in reply["answers"] if r["type"] == qtype]
-        if wanted: return wanted
+        if wanted: return remember_answer(key, wanted)
         cname = next((r for r in reply["answers"] if r["type"] == CNAME), None)
         if cname:
             if verbose: print(f"  {name} is an alias for {cname['value']}")
-            return resolve(cname["value"], qtype, verbose, depth + 1)
-        ns_names = [r["value"] for r in reply["authority"] if r["type"] == NS]
-        if not ns_names: raise LookupError(f"{server} had no answer and no referral for {name}")
-        zone = reply["authority"][0]["name"]
+            target = resolve(cname["value"], qtype, verbose, depth + 1)
+            # The alias is only good for as long as both it and what it points at are.
+            return remember_answer(key, [dict(r, ttl=min(r["ttl"], cname["ttl"])) for r in target])
+        referral = [r for r in reply["authority"] if r["type"] == NS]
+        if not referral: raise LookupError(f"{server} had no answer and no referral for {name}")
+        ns_names = [r["value"] for r in referral]
+        zone = referral[0]["name"]
         # Glue: the referral usually carries the name servers' addresses so we need not look them up.
         glue = [r["value"] for r in reply["additional"] if r["type"] == A and r["name"] in ns_names]
         if glue: servers = glue
         else:
             if verbose: print(f"  no glue for {ns_names[0]}, resolving it first")
             servers = [r["value"] for r in resolve(ns_names[0], A, verbose, depth + 1)]
-        known[zone] = servers
-
+        known[zone] = (clock() + min(r["ttl"] for r in referral), servers)
 
 if __name__ == "__main__":
     args = [a for a in sys.argv[1:] if not a.startswith("-")]

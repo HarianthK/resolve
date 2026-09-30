@@ -26,6 +26,8 @@ so it goes again, this time starting from the .org server it already knows.
 - CNAME chains, and NXDOMAIN when a name does not exist.
 - Truncation: a reply over 512 bytes arrives cut off with a flag set, and the
   same question is asked again over TCP.
+- A cache that keeps every answer and referral for exactly as long as its TTL
+  allows, so asking twice sends no packets the second time.
 
 ## Why
 
@@ -38,5 +40,7 @@ one afternoon. [DOCS.md](DOCS.md) is what I learned.
     python resolve.py NAME [A|AAAA|NS|MX|TXT] [-v]
     python test_resolve.py
 
-The test parses a packet built by hand, breaks on any parsing mistake, and
-then checks one live answer against the system resolver.
+The test parses a packet built by hand, breaks on any parsing mistake, checks
+the cache against a scripted network that counts every packet while a fake
+clock jumps forward, and then checks one live answer against the system
+resolver.
