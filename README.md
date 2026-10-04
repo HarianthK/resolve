@@ -27,7 +27,8 @@ so it goes again, this time starting from the .org server it already knows.
 - Truncation: a reply over 512 bytes arrives cut off with a flag set, and the
   same question is asked again over TCP.
 - A cache that keeps every answer and referral for exactly as long as its TTL
-  allows, so asking twice sends no packets the second time.
+  allows, so asking twice sends no packets the second time, and remembers
+  names that do not exist for as long as their zone's SOA record says.
 
 ## Why
 

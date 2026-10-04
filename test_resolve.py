@@ -76,6 +76,48 @@ finally:
     resolve.known.clear()
     resolve.known[""] = (float("inf"), list(ROOT_IPS))
 
+# Names that do not exist, offline. The .com server says NXDOMAIN and, as RFC 2308 asks,
+# sends its SOA: a TTL of 900 and a minimum of 3600, so the miss is good for 900 seconds.
+def missing_ask(server, name, qtype=resolve.A, timeout=3, verbose=False):
+    packets.append(server)
+    empty = {"id": 0, "rcode": 0, "truncated": False, "answers": [], "authority": [], "additional": []}
+    if server in ROOT_IPS:
+        return dict(empty, authority=[{"name": "com", "type": resolve.NS, "ttl": 172800, "value": "a.gtld"}],
+                    additional=[{"name": "a.gtld", "type": resolve.A, "ttl": 172800, "value": "10.0.0.1"}])
+    soa = {"name": "com", "type": resolve.SOA, "ttl": 900, "value": "a.gtld x 1 2 3 4 3600", "minimum": 3600}
+    return dict(empty, rcode=3, authority=[] if name.startswith("bare") else [soa])
+
+
+def misses(name, qtype=resolve.A):
+    packets.clear()
+    try:
+        resolve.resolve(name, qtype)
+    except LookupError as e:
+        assert "does not exist" in str(e), e
+        return list(packets)
+    raise AssertionError(f"{name} resolved")
+
+
+now[0] = 5000.0
+resolve.ask, resolve.clock = missing_ask, (lambda: now[0])
+try:
+    assert len(misses("nope.com")) == 2
+    now[0] += 100
+    assert misses("nope.com") == [], "a fresh miss should come from the cache"
+    assert misses("nope.com", resolve.AAAA) == [], "a missing name is missing for every type"
+    # Past the 900 seconds: asked again, though only of .com, whose referral is still good.
+    now[0] += 850
+    assert misses("nope.com") == ["10.0.0.1"], packets
+    # A miss that arrives without an SOA gives no time to keep it, so it is not kept.
+    misses("bare.com")
+    assert misses("bare.com") == ["10.0.0.1"], packets
+finally:
+    resolve.ask, resolve.clock = real_ask, real_clock
+    resolve.answers.clear()
+    resolve.missing.clear()
+    resolve.known.clear()
+    resolve.known[""] = (float("inf"), list(ROOT_IPS))
+
 # Live: a.root-servers.net has had the same address since 1997, so both resolvers must agree.
 ours = {r["value"] for r in resolve.resolve("a.root-servers.net")}
 theirs = {ai[4][0] for ai in socket.getaddrinfo("a.root-servers.net", 53, socket.AF_INET)}

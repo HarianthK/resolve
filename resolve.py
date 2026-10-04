@@ -10,13 +10,15 @@ import time
 ROOTS = {"a": "198.41.0.4", "b": "170.247.170.2", "c": "192.33.4.12", "d": "199.7.91.13", "e": "192.203.230.10",
          "f": "192.5.5.241", "g": "192.112.36.4", "h": "198.97.190.53", "i": "192.36.148.17", "j": "192.58.128.30",
          "k": "193.0.14.129", "l": "199.7.83.42", "m": "202.12.27.33"}
-A, NS, CNAME, MX, TXT, AAAA = 1, 2, 5, 15, 16, 28
-TYPE_NAMES = {A: "A", NS: "NS", CNAME: "CNAME", AAAA: "AAAA", 6: "SOA", MX: "MX", TXT: "TXT"}
+A, NS, CNAME, SOA, MX, TXT, AAAA = 1, 2, 5, 6, 15, 16, 28
+TYPE_NAMES = {A: "A", NS: "NS", CNAME: "CNAME", AAAA: "AAAA", SOA: "SOA", MX: "MX", TXT: "TXT"}
 # Referrals seen so far, zone -> name server addresses, so a second lookup need not start at the root.
 # Referrals seen so far, zone -> (expiry, name server addresses), so a later lookup can start
 # below the root. The root never expires. Answers are kept the same way, until their TTL is up.
 known = {"": (math.inf, list(ROOTS.values()))}
 answers = {}
+# Names a server said do not exist, name -> expiry. A missing name is missing for every type.
+missing = {}
 clock = time.monotonic  # a test swaps this to jump forward without waiting
 
 
@@ -53,6 +55,13 @@ def read_record(data, pos):
     elif rtype == AAAA: value = socket.inet_ntop(socket.AF_INET6, rdata)
     elif rtype == MX: value = f"{struct.unpack('!H', rdata[:2])[0]} {read_name(data, pos + 2)[0]}"
     elif rtype == TXT: value = " ".join(repr(rdata[i + 1:i + 1 + rdata[i]].decode("utf-8", "replace")) for i in _txt_offsets(rdata))
+    elif rtype == SOA:
+        # Two names, then five numbers; the last says how long a "does not exist" may be kept.
+        primary, at = read_name(data, pos)
+        mailbox, at = read_name(data, at)
+        serial, refresh, retry, expire, minimum = struct.unpack("!IIIII", data[at:at + 20])
+        value = f"{primary} {mailbox} {serial} {refresh} {retry} {expire} {minimum}"
+        return {"name": name, "type": rtype, "ttl": ttl, "value": value, "minimum": minimum}, pos + rdlen
     else: value = rdata
     return {"name": name, "type": rtype, "ttl": ttl, "value": value}, pos + rdlen
 
@@ -118,6 +127,9 @@ def resolve(name, qtype=A, verbose=False, depth=0):
     if depth > 8: raise RuntimeError("too many CNAME or referral hops")
     name = name.rstrip(".").lower()
     now = clock()
+    if missing.get(name, 0) > now:
+        if verbose: print(f"  {name} does not exist, from the cache, {int(missing[name] - now)}s left")
+        raise LookupError(f"{name} does not exist (NXDOMAIN, cached)")
     key = (name, qtype)
     if key in answers and answers[key][0] > now:
         expires, records = answers[key]
@@ -132,7 +144,12 @@ def resolve(name, qtype=A, verbose=False, depth=0):
         server = random.choice(servers)
         reply = ask(server, name, qtype, verbose=verbose)
         if verbose: print(f"  {server:<16} {name} {TYPE_NAMES.get(qtype, qtype)} -> {len(reply['answers'])} answers, {len(reply['authority'])} authority, {len(reply['additional'])} glue")
-        if reply["rcode"] == 3: raise LookupError(f"{name} does not exist (NXDOMAIN)")
+        if reply["rcode"] == 3:
+            # RFC 2308: the zone's SOA comes back with the answer, and the shorter of its own
+            # TTL and its minimum field is how long the name may be remembered as missing.
+            soa = next((r for r in reply["authority"] if r["type"] == SOA), None)
+            if soa: missing[name] = clock() + min(soa["ttl"], soa["minimum"])
+            raise LookupError(f"{name} does not exist (NXDOMAIN)")
         wanted = [r for r in reply["answers"] if r["type"] == qtype]
         if wanted: return remember_answer(key, wanted)
         cname = next((r for r in reply["answers"] if r["type"] == CNAME), None)
