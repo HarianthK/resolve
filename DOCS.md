@@ -86,6 +86,20 @@ must not go back to the network. And an NXDOMAIN that arrives without an SOA
 gives no time to keep it, so it is not kept at all. The offline test covers both,
 and the SOA record is now decoded instead of shown as raw bytes.
 
+## A zone has many servers because some are always down
+
+Every referral names several servers, usually between two and thirteen, and
+the first version picked one at random and gave up if it did not answer. That
+is fine on a good day and wrong on an ordinary one: a delegation can point at
+a server that no longer serves the zone, and some networks cannot reach some
+root servers at all. Now each of the zone's servers is tried once, in random
+order, before the lookup fails. A server that answers with the wrong query id
+counts as not answering, since that reply could be a forgery.
+
+The offline test lets .com have three servers, makes two of them time out, and
+checks for each choice of survivor that the lookup succeeds without asking any
+server twice, then that it fails cleanly when all three are silent.
+
 ## Random source ports and IDs are the security
 
 The query id is 16 bits and the reply must carry the same one. That, plus a

@@ -118,6 +118,15 @@ def _read_exactly(sock, n):
     return buf
 
 
+def ask_any(servers, name, qtype, verbose):
+    # One dead or lame server is common, so each of the zone's servers gets a turn before giving up.
+    for server in random.sample(servers, len(servers)):
+        try: return server, ask(server, name, qtype, verbose=verbose)
+        except (OSError, ValueError) as e:
+            if verbose: print(f"  {server:<16} did not answer ({e or type(e).__name__}), trying another")
+    raise LookupError(f"none of the {len(servers)} servers asked about {name} answered")
+
+
 def remember_answer(key, records):
     answers[key] = (clock() + min(r["ttl"] for r in records), records)
     return records
@@ -141,8 +150,7 @@ def resolve(name, qtype=A, verbose=False, depth=0):
     zone = next(z for z in sorted(live, key=len, reverse=True) if name == z or name.endswith("." + z) or z == "")
     servers = known[zone][1]
     while True:
-        server = random.choice(servers)
-        reply = ask(server, name, qtype, verbose=verbose)
+        server, reply = ask_any(servers, name, qtype, verbose)
         if verbose: print(f"  {server:<16} {name} {TYPE_NAMES.get(qtype, qtype)} -> {len(reply['answers'])} answers, {len(reply['authority'])} authority, {len(reply['additional'])} glue")
         if reply["rcode"] == 3:
             # RFC 2308: the zone's SOA comes back with the answer, and the shorter of its own

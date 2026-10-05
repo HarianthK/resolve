@@ -118,6 +118,45 @@ finally:
     resolve.known.clear()
     resolve.known[""] = (float("inf"), list(ROOT_IPS))
 
+# Failover, offline: .com has three servers and the first two asked time out. The lookup
+# still succeeds, and each server is asked once. With all three silent, it says so.
+dead = set()
+
+
+def flaky_ask(server, name, qtype=resolve.A, timeout=3, verbose=False):
+    packets.append(server)
+    if server in dead: raise socket.timeout("timed out")
+    empty = {"id": 0, "rcode": 0, "truncated": False, "answers": [], "authority": [], "additional": []}
+    if server in ROOT_IPS:
+        return dict(empty, authority=[{"name": "com", "type": resolve.NS, "ttl": 172800, "value": f"{c}.gtld"} for c in "abc"],
+                    additional=[{"name": f"{c}.gtld", "type": resolve.A, "ttl": 172800, "value": f"10.0.1.{i}"} for i, c in enumerate("abc")])
+    return dict(empty, answers=[{"name": name, "type": resolve.A, "ttl": 60, "value": "10.9.9.9"}])
+
+
+resolve.ask = flaky_ask
+try:
+    for alive in ["10.0.1.0", "10.0.1.1", "10.0.1.2"]:
+        resolve.known.clear()
+        resolve.known[""] = (float("inf"), list(ROOT_IPS))
+        resolve.answers.clear()
+        dead = {"10.0.1.0", "10.0.1.1", "10.0.1.2"} - {alive}
+        packets.clear()
+        assert resolve.resolve("example.com")[0]["value"] == "10.9.9.9"
+        gtld = packets[1:]
+        assert gtld[-1] == alive and len(gtld) == len(set(gtld)) <= 3, packets
+    resolve.answers.clear()
+    dead = {"10.0.1.0", "10.0.1.1", "10.0.1.2"}
+    try:
+        resolve.resolve("example.com")
+        raise AssertionError("resolved with every server down")
+    except LookupError as e:
+        assert "none of the 3 servers" in str(e), e
+finally:
+    resolve.ask = real_ask
+    resolve.answers.clear()
+    resolve.known.clear()
+    resolve.known[""] = (float("inf"), list(ROOT_IPS))
+
 # Live: a.root-servers.net has had the same address since 1997, so both resolvers must agree.
 ours = {r["value"] for r in resolve.resolve("a.root-servers.net")}
 theirs = {ai[4][0] for ai in socket.getaddrinfo("a.root-servers.net", 53, socket.AF_INET)}
