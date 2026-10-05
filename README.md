@@ -31,6 +31,9 @@ so it goes again, this time starting from the .org server it already knows.
   names that do not exist for as long as their zone's SOA record says.
 - Failover: a server that times out or refuses is skipped, and each of the
   zone's other servers is tried before the lookup gives up.
+- Bailiwick checks: a server is believed only about its own part of the tree,
+  so a reply cannot slip in an answer for another name, a referral sideways or
+  back up, or an address for a name server outside its zone.
 
 ## Why
 

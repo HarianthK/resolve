@@ -127,6 +127,10 @@ def ask_any(servers, name, qtype, verbose):
     raise LookupError(f"none of the {len(servers)} servers asked about {name} answered")
 
 
+def under(name, zone):
+    return zone == "" or name == zone or name.endswith("." + zone)
+
+
 def remember_answer(key, records):
     answers[key] = (clock() + min(r["ttl"] for r in records), records)
     return records
@@ -147,7 +151,7 @@ def resolve(name, qtype=A, verbose=False, depth=0):
         return [dict(r, ttl=int(expires - now)) for r in records]
     # Start from the closest zone still in date: "" (the root) at worst.
     live = [z for z, (expires, _) in known.items() if expires > now]
-    zone = next(z for z in sorted(live, key=len, reverse=True) if name == z or name.endswith("." + z) or z == "")
+    zone = next(z for z in sorted(live, key=len, reverse=True) if under(name, z))
     servers = known[zone][1]
     while True:
         server, reply = ask_any(servers, name, qtype, verbose)
@@ -158,9 +162,11 @@ def resolve(name, qtype=A, verbose=False, depth=0):
             soa = next((r for r in reply["authority"] if r["type"] == SOA), None)
             if soa: missing[name] = clock() + min(soa["ttl"], soa["minimum"])
             raise LookupError(f"{name} does not exist (NXDOMAIN)")
-        wanted = [r for r in reply["answers"] if r["type"] == qtype]
+        # Only records about the name asked are believed; anything else in the reply could be planted.
+        about = [r for r in reply["answers"] if r["name"].lower() == name]
+        wanted = [r for r in about if r["type"] == qtype]
         if wanted: return remember_answer(key, wanted)
-        cname = next((r for r in reply["answers"] if r["type"] == CNAME), None)
+        cname = next((r for r in about if r["type"] == CNAME), None)
         if cname:
             if verbose: print(f"  {name} is an alias for {cname['value']}")
             target = resolve(cname["value"], qtype, verbose, depth + 1)
@@ -168,10 +174,14 @@ def resolve(name, qtype=A, verbose=False, depth=0):
             return remember_answer(key, [dict(r, ttl=min(r["ttl"], cname["ttl"])) for r in target])
         referral = [r for r in reply["authority"] if r["type"] == NS]
         if not referral: raise LookupError(f"{server} had no answer and no referral for {name}")
-        ns_names = [r["value"] for r in referral]
-        zone = referral[0]["name"]
-        # Glue: the referral usually carries the name servers' addresses so we need not look them up.
-        glue = [r["value"] for r in reply["additional"] if r["type"] == A and r["name"] in ns_names]
+        below = referral[0]["name"].lower()
+        # Bailiwick: a server may only hand down a zone between its own and the name, never sideways or up.
+        if below == zone or not under(below, zone) or not under(name, below):
+            raise LookupError(f"{server} referred {name} to {below or 'the root'}, outside {zone or 'the root'}")
+        ns_names = [r["value"] for r in referral if r["name"].lower() == below]
+        # Glue: the referral usually carries the name servers' addresses, believed only inside the server's zone.
+        glue = [r["value"] for r in reply["additional"] if r["type"] == A and r["name"] in ns_names and under(r["name"].lower(), zone)]
+        zone = below
         if glue: servers = glue
         else:
             if verbose: print(f"  no glue for {ns_names[0]}, resolving it first")

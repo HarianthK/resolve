@@ -157,6 +157,51 @@ finally:
     resolve.known.clear()
     resolve.known[""] = (float("inf"), list(ROOT_IPS))
 
+# Bailiwick, offline: a hostile .com server tries four lies when asked about a name under
+# .com. Each must fail the lookup or be ignored, and none may end up in the cache.
+lie = None
+
+
+def hostile_ask(server, name, qtype=resolve.A, timeout=3, verbose=False):
+    packets.append(server)
+    assert len(packets) < 20, "the resolver is going round in circles"
+    empty = {"id": 0, "rcode": 0, "truncated": False, "answers": [], "authority": [], "additional": []}
+    ns = lambda zone, host: {"name": zone, "type": resolve.NS, "ttl": 172800, "value": host}
+    glue = lambda host, ip: {"name": host, "type": resolve.A, "ttl": 172800, "value": ip}
+    if server in ROOT_IPS:
+        if name.endswith(".org"): return dict(empty, rcode=3)
+        return dict(empty, authority=[ns("com", "a.gtld")], additional=[glue("a.gtld", "10.0.0.1")])
+    assert server == "10.0.0.1", f"asked {server}, an address only a lie gave"
+    if lie == "other name":
+        return dict(empty, answers=[{"name": "bank.com", "type": resolve.A, "ttl": 300, "value": "6.6.6.6"}])
+    if lie == "sideways":
+        return dict(empty, authority=[ns("bank.org", "ns.bank.org")], additional=[glue("ns.bank.org", "6.6.6.6")])
+    if lie == "upward":
+        # Glue inside .com, so only the referral check can stop it, not the glue check.
+        return dict(empty, authority=[ns("com", "ns.com")], additional=[glue("ns.com", "10.0.0.1")])
+    assert lie == "foreign glue"
+    return dict(empty, authority=[ns("example.com", "ns.evil.org")], additional=[glue("ns.evil.org", "6.6.6.6")])
+
+
+resolve.ask = hostile_ask
+try:
+    for lie in ["other name", "sideways", "upward", "foreign glue"]:
+        resolve.answers.clear()
+        packets.clear()
+        try:
+            got = resolve.resolve("example.com")
+            raise AssertionError(f"{lie}: resolved to {got}")
+        except LookupError:
+            pass
+        assert "6.6.6.6" not in packets, (lie, packets)
+        assert "bank.org" not in resolve.known and not any("bank" in k[0] for k in resolve.answers), lie
+finally:
+    resolve.ask = real_ask
+    resolve.answers.clear()
+    resolve.missing.clear()
+    resolve.known.clear()
+    resolve.known[""] = (float("inf"), list(ROOT_IPS))
+
 # Live: a.root-servers.net has had the same address since 1997, so both resolvers must agree.
 ours = {r["value"] for r in resolve.resolve("a.root-servers.net")}
 theirs = {ai[4][0] for ai in socket.getaddrinfo("a.root-servers.net", 53, socket.AF_INET)}

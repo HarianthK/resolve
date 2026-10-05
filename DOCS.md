@@ -100,6 +100,31 @@ The offline test lets .com have three servers, makes two of them time out, and
 checks for each choice of survivor that the lookup succeeds without asking any
 server twice, then that it fails cleanly when all three are silent.
 
+## A server is only believed about its own zone
+
+A reply can carry anything, and the first version believed all of it. Asked
+about example.com, a .com server could answer with a record for bank.com and
+it would be returned and cached as example.com's address. It could refer the
+question to bank.org, and that referral would be cached for every later
+lookup under bank.org. It could refer back to .com, and the loop following
+referrals would never end. This is the hole cache poisoning used for years.
+
+The fix is the bailiwick rule, which real resolvers apply to every reply:
+
+- Only answer records whose name is the name asked are read.
+- A referral must hand down a zone strictly between the server's zone and the
+  name: example.com from a .com server, never bank.org and never .com again.
+- Glue, the addresses that come with a referral, is believed only for name
+  servers inside the server's own zone. A .com server can vouch for
+  ns.example.com but not for ns.evil.org, whose address is looked up from the
+  root instead.
+
+The last rule costs real lookups a little: .com servers send glue for .net
+name servers too, which is now ignored, so github.com takes extra queries to
+find its name servers. Six real names still resolve. The offline test plays a
+.com server that tries each of the four lies, and checks that each one fails
+the lookup and that the planted address is never contacted or cached.
+
 ## Random source ports and IDs are the security
 
 The query id is 16 bits and the reply must carry the same one. That, plus a
