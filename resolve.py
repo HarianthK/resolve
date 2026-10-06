@@ -10,9 +10,11 @@ import time
 ROOTS = {"a": "198.41.0.4", "b": "170.247.170.2", "c": "192.33.4.12", "d": "199.7.91.13", "e": "192.203.230.10",
          "f": "192.5.5.241", "g": "192.112.36.4", "h": "198.97.190.53", "i": "192.36.148.17", "j": "192.58.128.30",
          "k": "193.0.14.129", "l": "199.7.83.42", "m": "202.12.27.33"}
-A, NS, CNAME, SOA, MX, TXT, AAAA = 1, 2, 5, 6, 15, 16, 28
+A, NS, CNAME, SOA, MX, TXT, AAAA, OPT = 1, 2, 5, 6, 15, 16, 28, 41
 TYPE_NAMES = {A: "A", NS: "NS", CNAME: "CNAME", AAAA: "AAAA", SOA: "SOA", MX: "MX", TXT: "TXT"}
-# Referrals seen so far, zone -> name server addresses, so a second lookup need not start at the root.
+FORMERR = 1
+# The UDP reply size EDNS asks for: DNS Flag Day 2020's figure, small enough never to fragment.
+EDNS_SIZE = 1232
 # Referrals seen so far, zone -> (expiry, name server addresses), so a later lookup can start
 # below the root. The root never expires. Answers are kept the same way, until their TTL is up.
 known = {"": (math.inf, list(ROOTS.values()))}
@@ -22,10 +24,13 @@ missing = {}
 clock = time.monotonic  # a test swaps this to jump forward without waiting
 
 
-def build_query(name, qtype=A):
-    header = struct.pack("!HHHHHH", random.randrange(65536), 0, 1, 0, 0, 0)  # id, flags (no RD: we recurse), 1 question
+def build_query(name, qtype=A, edns=True):
+    # id, flags (no RD: we recurse), 1 question, and with EDNS one extra record
+    header = struct.pack("!HHHHHH", random.randrange(65536), 0, 1, 0, 0, 1 if edns else 0)
     qname = b"".join(bytes([len(label)]) + label.encode() for label in name.rstrip(".").split(".")) + b"\0"
-    return header + qname + struct.pack("!HH", qtype, 1)
+    # The OPT pseudo-record: no name, and its class field is the UDP size we can take.
+    opt = b"\0" + struct.pack("!HHIH", OPT, EDNS_SIZE, 0, 0) if edns else b""
+    return header + qname + struct.pack("!HH", qtype, 1) + opt
 
 
 def read_name(data, pos):
@@ -90,22 +95,29 @@ def parse(data):
     return {"id": ident, "rcode": flags & 0xF, "truncated": bool(flags & 0x200), "answers": sections[0], "authority": sections[1], "additional": sections[2]}
 
 
-def ask(server, name, qtype=A, timeout=3, verbose=False):
-    query = build_query(name, qtype)
+def ask(server, name, qtype=A, timeout=3, verbose=False, port=53, edns=True):
+    query = build_query(name, qtype, edns)
+    ident = struct.unpack("!H", query[:2])[0]
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
         sock.settimeout(timeout)
-        sock.sendto(query, (server, 53))
+        sock.sendto(query, (server, port))
         data, _ = sock.recvfrom(4096)
     reply = parse(data)
+    # Checked before anything is acted on, so a forged FORMERR cannot talk us out of EDNS.
+    if reply["id"] != ident: raise ValueError("reply id does not match the query")
+    if edns and reply["rcode"] == FORMERR:
+        # A server too old for EDNS calls the OPT record a format error; ask it the 1987 way.
+        if verbose: print(f"  {server} does not speak EDNS, asking again without it")
+        return ask(server, name, qtype, timeout, verbose, port, edns=False)
     if reply["truncated"]:
-        # Without EDNS a UDP reply stops at 512 bytes; the same query over TCP gets the whole thing.
+        # Still too big for UDP (512 bytes without EDNS); the same query over TCP gets the whole thing.
         if verbose: print(f"  {server} truncated the reply at {len(data)} bytes, asking again over TCP")
-        with socket.create_connection((server, 53), timeout=timeout) as sock:
+        with socket.create_connection((server, port), timeout=timeout) as sock:
             sock.sendall(struct.pack("!H", len(query)) + query)
             length = struct.unpack("!H", _read_exactly(sock, 2))[0]
             data = _read_exactly(sock, length)
         reply = parse(data)
-    if reply["id"] != struct.unpack("!H", query[:2])[0]: raise ValueError("reply id does not match the query")
+        if reply["id"] != ident: raise ValueError("reply id does not match the query")
     return reply
 
 

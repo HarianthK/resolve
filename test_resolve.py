@@ -1,6 +1,7 @@
 # Run: python test_resolve.py. The first check is offline; the second asks the real root servers.
 import socket
 import struct
+import threading
 
 import resolve
 
@@ -201,6 +202,66 @@ finally:
     resolve.missing.clear()
     resolve.known.clear()
     resolve.known[""] = (float("inf"), list(ROOT_IPS))
+
+# EDNS, offline, against a real UDP socket on this machine. The handler is a server: it
+# gets the query's bytes and returns the reply's. Nothing listens for TCP.
+def serve(handler):
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.bind(("127.0.0.1", 0))
+    seen = []
+
+    def loop():
+        while True:
+            try:
+                data, addr = sock.recvfrom(4096)
+            except OSError:
+                return
+            seen.append(data)
+            sock.sendto(handler(data), addr)
+
+    threading.Thread(target=loop, daemon=True).start()
+    return sock, seen
+
+
+def reply_to(query, rcode=0, answers=b"", count=0, ident=None):
+    question_end = query.index(b"\0", 12) + 5
+    ident = struct.unpack("!H", query[:2])[0] if ident is None else ident
+    return struct.pack("!HHHHHH", ident, 0x8400 | rcode, 1, count, 0, 0) + query[12:question_end] + answers
+
+
+has_opt = lambda query: query[10:12] == b"\0\1"
+OPT_RECORD = b"\0" + struct.pack("!HHIH", resolve.OPT, 1232, 0, 0)
+# 804 bytes of TXT: too big for plain UDP's 512, well inside EDNS's 1232.
+big_txt = b"\xc0\x0c" + struct.pack("!HHIH", resolve.TXT, 1, 60, 804) + (b"\xc8" + b"x" * 200) * 4
+small_a = b"\xc0\x0c" + struct.pack("!HHIH", resolve.A, 1, 60, 4) + bytes([10, 1, 2, 3])
+
+# A modern server sends the big answer over UDP when asked with EDNS, so TCP is never needed.
+sock, seen = serve(lambda q: reply_to(q, answers=big_txt, count=1) if has_opt(q) else reply_to(q))
+try:
+    got = resolve.ask("127.0.0.1", "example.com", resolve.TXT, timeout=2, port=sock.getsockname()[1])
+    assert not got["truncated"] and len(got["answers"]) == 1 and "x" * 200 in got["answers"][0]["value"]
+    assert len(seen) == 1 and seen[0].endswith(OPT_RECORD), seen
+finally:
+    sock.close()
+
+# An old server calls the OPT record a format error. The question is asked again without it.
+sock, seen = serve(lambda q: reply_to(q, rcode=resolve.FORMERR) if has_opt(q) else reply_to(q, answers=small_a, count=1))
+try:
+    got = resolve.ask("127.0.0.1", "example.com", timeout=2, port=sock.getsockname()[1])
+    assert got["answers"][0]["value"] == "10.1.2.3", got
+    assert len(seen) == 2 and has_opt(seen[0]) and not has_opt(seen[1]), seen
+finally:
+    sock.close()
+
+# A FORMERR with the wrong id is a forgery, and must not talk the resolver out of EDNS.
+sock, seen = serve(lambda q: reply_to(q, rcode=resolve.FORMERR, ident=(struct.unpack("!H", q[:2])[0] + 1) % 65536))
+try:
+    resolve.ask("127.0.0.1", "example.com", timeout=2, port=sock.getsockname()[1])
+    raise AssertionError("believed a reply with the wrong id")
+except ValueError:
+    assert len(seen) == 1, seen
+finally:
+    sock.close()
 
 # Live: a.root-servers.net has had the same address since 1997, so both resolvers must agree.
 ours = {r["value"] for r in resolve.resolve("a.root-servers.net")}

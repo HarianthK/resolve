@@ -24,6 +24,9 @@ so it goes again, this time starting from the .org server it already knows.
 - Referrals with glue (the name servers' addresses come along) and without
   (the name server's own name has to be resolved first, from scratch).
 - CNAME chains, and NXDOMAIN when a name does not exist.
+- EDNS0: every query offers to take 1,232-byte UDP replies, so most big
+  answers no longer need the TCP retry, and a server too old for EDNS is
+  asked again without it.
 - Truncation: a reply over 512 bytes arrives cut off with a flag set, and the
   same question is asked again over TCP.
 - A cache that keeps every answer and referral for exactly as long as its TTL

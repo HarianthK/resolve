@@ -39,7 +39,7 @@ not after the name it jumped to. Getting this wrong shifts every later record
 and the parser reads garbage, which is why the test builds a packet with a
 pointer by hand.
 
-## 512 bytes is still the limit
+## 512 bytes was the limit
 
 Plain DNS over UDP stops at 512 bytes. A server with more to say sends what
 fits and sets the TC flag, and the client is expected to ask again over TCP,
@@ -48,6 +48,23 @@ and is truncated at 443 bytes; more surprisingly, the root's referral for
 `.com` is truncated too, at 509 bytes, so a UDP-only client sees fewer glue
 addresses than exist. EDNS0 raises the limit, but the fallback still has to
 be there.
+
+Now every query carries EDNS0: one extra record at the end, type OPT, with no
+name, whose class field is not a class at all but the reply size the asker can
+take. It asks for 1,232 bytes, the figure DNS Flag Day 2020 settled on because
+a reply that size crosses any network without being split into fragments, and
+fragments are what get lost and what spoofing attacks used to ride in on. With
+it, `google.com TXT` comes back over UDP in one round trip instead of two plus
+a TCP handshake. `microsoft.com TXT` is bigger still, 58 records, and still
+falls back to TCP, as it should.
+
+A server too old to know EDNS answers FORMERR, a format error, and the resolver
+asks it again the 1987 way. That retry is only taken once the reply's id has
+matched the query's, since otherwise anyone able to guess where a query was
+going could forge a FORMERR and push every lookup back to plain DNS. The tests
+run against a real UDP socket on this machine, playing a modern server, an old
+one and a forger; nothing listens for TCP there, so a test that needed the TCP
+fallback would fail rather than quietly pass.
 
 ## Caching is what makes the real thing fast
 
