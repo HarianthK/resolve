@@ -203,6 +203,47 @@ finally:
     resolve.known.clear()
     resolve.known[""] = (float("inf"), list(ROOT_IPS))
 
+# No glue, offline: example.com's referral names two servers and gives no addresses. The
+# first name no longer exists, so the second must be looked up instead of the lookup failing.
+def glueless_ask(server, name, qtype=resolve.A, timeout=3, verbose=False):
+    packets.append((server, name))
+    empty = {"id": 0, "rcode": 0, "truncated": False, "answers": [], "authority": [], "additional": []}
+    ns = lambda zone, host: {"name": zone, "type": resolve.NS, "ttl": 3600, "value": host}
+    a = lambda host, ip: {"name": host, "type": resolve.A, "ttl": 3600, "value": ip}
+    if server in ROOT_IPS:
+        if name.endswith(".org"): return dict(empty, rcode=3)
+        if name.endswith(".net"): return dict(empty, authority=[ns("net", "a.gtld.net")], additional=[a("a.gtld.net", "10.0.0.5")])
+        return dict(empty, authority=[ns("com", "a.gtld.com")], additional=[a("a.gtld.com", "10.0.0.1")])
+    if server == "10.0.0.1":
+        return dict(empty, authority=[ns("example.com", "ns1.gone.org"), ns("example.com", "ns2.ok.net")])
+    if server == "10.0.0.5":
+        return dict(empty, answers=[a("ns2.ok.net", "10.0.0.9")])
+    assert server == "10.0.0.9", server
+    return dict(empty, answers=[a(name, "93.184.216.34")])
+
+
+resolve.ask = glueless_ask
+try:
+    packets.clear()
+    assert resolve.resolve("example.com")[0]["value"] == "93.184.216.34"
+    assert any(n == "ns1.gone.org" for _, n in packets), "the first name server was never tried"
+    # With both gone, the lookup fails and names them both.
+    resolve.answers.clear()
+    resolve.known.clear()
+    resolve.known[""] = (float("inf"), list(ROOT_IPS))
+    resolve.ask = lambda server, name, *rest, **kw: dict(glueless_ask(server, name.replace("ok.net", "gone.org")))
+    try:
+        resolve.resolve("example.com")
+        raise AssertionError("resolved with no name server findable")
+    except LookupError as e:
+        assert "ns1.gone.org" in str(e) and "ns2.ok.net" in str(e), e
+finally:
+    resolve.ask = real_ask
+    resolve.answers.clear()
+    resolve.missing.clear()
+    resolve.known.clear()
+    resolve.known[""] = (float("inf"), list(ROOT_IPS))
+
 # EDNS, offline, against a real UDP socket on this machine. The handler is a server: it
 # gets the query's bytes and returns the reply's. Nothing listens for TCP.
 def serve(handler):

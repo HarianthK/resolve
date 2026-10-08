@@ -139,6 +139,18 @@ def ask_any(servers, name, qtype, verbose):
     raise LookupError(f"none of the {len(servers)} servers asked about {name} answered")
 
 
+def addresses_of(ns_names, verbose, depth):
+    # A referral without glue names its servers but not where they are. Any one will do, so
+    # each is looked up in turn: one name that no longer exists must not sink the lookup.
+    for host in ns_names:
+        if verbose: print(f"  no glue for {host}, resolving it first")
+        try:
+            return [r["value"] for r in resolve(host, A, verbose, depth + 1)]
+        except (LookupError, RuntimeError) as e:
+            if verbose: print(f"  {host} could not be found ({e}), trying the next")
+    raise LookupError(f"none of the name servers could be found: {', '.join(ns_names)}")
+
+
 def under(name, zone):
     return zone == "" or name == zone or name.endswith("." + zone)
 
@@ -194,10 +206,7 @@ def resolve(name, qtype=A, verbose=False, depth=0):
         # Glue: the referral usually carries the name servers' addresses, believed only inside the server's zone.
         glue = [r["value"] for r in reply["additional"] if r["type"] == A and r["name"] in ns_names and under(r["name"].lower(), zone)]
         zone = below
-        if glue: servers = glue
-        else:
-            if verbose: print(f"  no glue for {ns_names[0]}, resolving it first")
-            servers = [r["value"] for r in resolve(ns_names[0], A, verbose, depth + 1)]
+        servers = glue or addresses_of(ns_names, verbose, depth)
         known[zone] = (clock() + min(r["ttl"] for r in referral), servers)
 
 if __name__ == "__main__":

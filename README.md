@@ -22,7 +22,7 @@ so it goes again, this time starting from the .org server it already knows.
 - A, AAAA, NS, CNAME, MX and TXT records, decoded from their wire form.
 - Name compression, the pointers that let a reply say "same name as byte 12".
 - Referrals with glue (the name servers' addresses come along) and without
-  (the name server's own name has to be resolved first, from scratch).
+  (a name server's own name has to be resolved first, from scratch, and if one cannot be found the next is tried).
 - CNAME chains, and NXDOMAIN when a name does not exist.
 - EDNS0: every query offers to take 1,232-byte UDP replies, so most big
   answers no longer need the TCP retry, and a server too old for EDNS is
