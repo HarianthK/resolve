@@ -24,6 +24,9 @@ so it goes again, this time starting from the .org server it already knows.
 - Referrals with glue (the name servers' addresses come along) and without
   (a name server's own name has to be resolved first, from scratch, and if one cannot be found the next is tried).
 - CNAME chains, and NXDOMAIN when a name does not exist.
+- QNAME minimisation (RFC 9156): each server is asked only about the next
+  label down, so the root learns that you wanted something in `.org`, not
+  that it was `en.wikipedia.org`.
 - EDNS0: every query offers to take 1,232-byte UDP replies, so most big
   answers no longer need the TCP retry, and a server too old for EDNS is
   asked again without it.

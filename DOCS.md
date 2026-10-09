@@ -142,6 +142,32 @@ find its name servers. Six real names still resolve. The offline test plays a
 .com server that tries each of the four lies, and checks that each one fails
 the lookup and that the planted address is never contacted or cached.
 
+## Telling each server only what it needs
+
+A classic resolver sends the whole name to every server on the way down. The
+root, which only knows where `.org` lives, still learns that someone wanted
+`en.wikipedia.org`. QNAME minimisation, RFC 9156, asks each server about the
+next label below the zone it serves and nothing more: the root is asked about
+`org`, the `.org` servers about `wikipedia.org`, and only Wikipedia's own servers
+see the whole name and the record type actually wanted. The in-between
+questions are asked as type A, which the RFC recommends over NS because some
+servers mishandle NS questions.
+
+Three things make it work on real servers. A name with no zone starting at it
+comes back as an empty NOERROR, so the same servers are asked about the next
+label down. A server that wrongly answers NXDOMAIN for such an empty name, an
+old bug the RFC warns about, is not believed: the whole question is asked
+instead, and nothing is remembered as missing on the strength of an in-between
+answer. And after three in-between steps inside one zone, the whole name is
+asked, as the RFC caps it, so a long name cannot cost a query per label.
+
+The price is extra queries where a name has labels that are not zones.
+`en.wikipedia.org` still takes five queries; `www.bbc.co.uk` went from six to
+eleven, because `co.uk` is not a zone of its own and the CNAME it ends at,
+`www.bbc.co.uk.pri.bbc.co.uk`, sits three non-zone labels deep. The cache makes
+that a one-off. The tests check the exact names and types each server is asked,
+the NXDOMAIN fallback, and the cap, and `MINIMISE = False` turns it all off.
+
 ## Random source ports and IDs are the security
 
 The query id is 16 bits and the reply must carry the same one. That, plus a

@@ -22,6 +22,8 @@ answers = {}
 # Names a server said do not exist, name -> expiry. A missing name is missing for every type.
 missing = {}
 clock = time.monotonic  # a test swaps this to jump forward without waiting
+# RFC 9156: tell each server only the next label down, not the whole name. DOCS.md has why.
+MINIMISE = True
 
 
 def build_query(name, qtype=A, edns=True):
@@ -151,6 +153,13 @@ def addresses_of(ns_names, verbose, depth):
     raise LookupError(f"none of the name servers could be found: {', '.join(ns_names)}")
 
 
+def next_name(name, zone, extra):
+    # The name `extra` labels below zone on the way to name, or name itself once that is reached.
+    labels = name.split(".")
+    keep = (0 if zone == "" else len(zone.split("."))) + extra
+    return ".".join(labels[-keep:]) if keep < len(labels) else name
+
+
 def under(name, zone):
     return zone == "" or name == zone or name.endswith("." + zone)
 
@@ -177,9 +186,22 @@ def resolve(name, qtype=A, verbose=False, depth=0):
     live = [z for z, (expires, _) in known.items() if expires > now]
     zone = next(z for z in sorted(live, key=len, reverse=True) if under(name, z))
     servers = known[zone][1]
+    extra = 1
     while True:
-        server, reply = ask_any(servers, name, qtype, verbose)
-        if verbose: print(f"  {server:<16} {name} {TYPE_NAMES.get(qtype, qtype)} -> {len(reply['answers'])} answers, {len(reply['authority'])} authority, {len(reply['additional'])} glue")
+        # Three in-between names with no zone cut is enough; past that the whole name goes, as the RFC caps it.
+        asked = next_name(name, zone, extra) if MINIMISE and extra <= 3 else name
+        asked_type = qtype if asked == name else A
+        server, reply = ask_any(servers, asked, asked_type, verbose)
+        if verbose: print(f"  {server:<16} {asked} {TYPE_NAMES.get(asked_type, asked_type)} -> {len(reply['answers'])} answers, {len(reply['authority'])} authority, {len(reply['additional'])} glue")
+        if asked != name:
+            cut = any(r["type"] == NS and r["name"].lower() != zone for r in reply["authority"])
+            if reply["rcode"] == 0 and not cut:
+                extra += 1  # no zone starts here, so the same servers answer for the next label too
+                continue
+            if reply["rcode"] != 0:
+                # An odd answer to an in-between name, NXDOMAIN included, is settled by the whole question.
+                extra = 4
+                continue
         if reply["rcode"] == 3:
             # RFC 2308: the zone's SOA comes back with the answer, and the shorter of its own
             # TTL and its minimum field is how long the name may be remembered as missing.
@@ -205,7 +227,7 @@ def resolve(name, qtype=A, verbose=False, depth=0):
         ns_names = [r["value"] for r in referral if r["name"].lower() == below]
         # Glue: the referral usually carries the name servers' addresses, believed only inside the server's zone.
         glue = [r["value"] for r in reply["additional"] if r["type"] == A and r["name"] in ns_names and under(r["name"].lower(), zone)]
-        zone = below
+        zone, extra = below, 1
         servers = glue or addresses_of(ns_names, verbose, depth)
         known[zone] = (clock() + min(r["ttl"] for r in referral), servers)
 

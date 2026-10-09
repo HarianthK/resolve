@@ -170,7 +170,7 @@ def hostile_ask(server, name, qtype=resolve.A, timeout=3, verbose=False):
     ns = lambda zone, host: {"name": zone, "type": resolve.NS, "ttl": 172800, "value": host}
     glue = lambda host, ip: {"name": host, "type": resolve.A, "ttl": 172800, "value": ip}
     if server in ROOT_IPS:
-        if name.endswith(".org"): return dict(empty, rcode=3)
+        if name.split(".")[-1] == "org": return dict(empty, rcode=3)
         return dict(empty, authority=[ns("com", "a.gtld")], additional=[glue("a.gtld", "10.0.0.1")])
     assert server == "10.0.0.1", f"asked {server}, an address only a lie gave"
     if lie == "other name":
@@ -211,8 +211,8 @@ def glueless_ask(server, name, qtype=resolve.A, timeout=3, verbose=False):
     ns = lambda zone, host: {"name": zone, "type": resolve.NS, "ttl": 3600, "value": host}
     a = lambda host, ip: {"name": host, "type": resolve.A, "ttl": 3600, "value": ip}
     if server in ROOT_IPS:
-        if name.endswith(".org"): return dict(empty, rcode=3)
-        if name.endswith(".net"): return dict(empty, authority=[ns("net", "a.gtld.net")], additional=[a("a.gtld.net", "10.0.0.5")])
+        if name.split(".")[-1] in gone: return dict(empty, rcode=3)
+        if name.split(".")[-1] == "net": return dict(empty, authority=[ns("net", "a.gtld.net")], additional=[a("a.gtld.net", "10.0.0.5")])
         return dict(empty, authority=[ns("com", "a.gtld.com")], additional=[a("a.gtld.com", "10.0.0.1")])
     if server == "10.0.0.1":
         return dict(empty, authority=[ns("example.com", "ns1.gone.org"), ns("example.com", "ns2.ok.net")])
@@ -222,6 +222,7 @@ def glueless_ask(server, name, qtype=resolve.A, timeout=3, verbose=False):
     return dict(empty, answers=[a(name, "93.184.216.34")])
 
 
+gone = {"org"}
 resolve.ask = glueless_ask
 try:
     packets.clear()
@@ -231,7 +232,7 @@ try:
     resolve.answers.clear()
     resolve.known.clear()
     resolve.known[""] = (float("inf"), list(ROOT_IPS))
-    resolve.ask = lambda server, name, *rest, **kw: dict(glueless_ask(server, name.replace("ok.net", "gone.org")))
+    gone = {"org", "net"}
     try:
         resolve.resolve("example.com")
         raise AssertionError("resolved with no name server findable")
@@ -243,6 +244,66 @@ finally:
     resolve.missing.clear()
     resolve.known.clear()
     resolve.known[""] = (float("inf"), list(ROOT_IPS))
+
+# QNAME minimisation, offline: each server must be asked only for the next label down, as
+# type A, and only the servers for example.com may see the whole name and its real type.
+asked = []
+broken_ent = False
+
+
+def minimal_ask(server, name, qtype=resolve.A, timeout=3, verbose=False):
+    asked.append((server, name, qtype))
+    empty = {"id": 0, "rcode": 0, "truncated": False, "answers": [], "authority": [], "additional": []}
+    ns = lambda zone, host: {"name": zone, "type": resolve.NS, "ttl": 3600, "value": host}
+    a = lambda host, ip: {"name": host, "type": resolve.A, "ttl": 3600, "value": ip}
+    if server in ROOT_IPS:
+        return dict(empty, authority=[ns("com", "a.gtld")], additional=[a("a.gtld", "10.0.0.1")])
+    if server == "10.0.0.1":
+        return dict(empty, authority=[ns("example.com", "ns.example.com")], additional=[a("ns.example.com", "10.0.0.2")])
+    # example.com's own servers: everything under it is theirs, with no further zone cut.
+    if name.count(".") < 5 and name != "www.shop.example.com" and not name.startswith("a."):
+        # An empty name on the way down: NOERROR with no records, unless this server is the
+        # kind that wrongly says the name does not exist.
+        return dict(empty, rcode=3 if broken_ent else 0)
+    return dict(empty, answers=[{"name": name, "type": qtype, "ttl": 60, "value": "2001:db8::1"}])
+
+
+def fresh():
+    asked.clear()
+    resolve.answers.clear()
+    resolve.missing.clear()
+    resolve.known.clear()
+    resolve.known[""] = (float("inf"), list(ROOT_IPS))
+
+
+resolve.ask = minimal_ask
+try:
+    fresh()
+    assert resolve.resolve("www.shop.example.com", resolve.AAAA)[0]["value"] == "2001:db8::1"
+    names = [(name, qtype) for _, name, qtype in asked]
+    assert names == [("com", resolve.A), ("example.com", resolve.A), ("shop.example.com", resolve.A),
+                     ("www.shop.example.com", resolve.AAAA)], names
+    # A server that says an in-between name does not exist is asked the whole question
+    # instead, and the real name is neither lost nor remembered as missing.
+    fresh()
+    broken_ent = True
+    assert resolve.resolve("www.shop.example.com", resolve.AAAA)[0]["value"] == "2001:db8::1"
+    assert "www.shop.example.com" not in resolve.missing and "shop.example.com" not in resolve.missing
+    broken_ent = False
+    # A long name below one zone: three in-between steps, then the whole name, as RFC 9156 caps it.
+    fresh()
+    resolve.resolve("a.b.c.d.e.example.com")
+    below = [name for server, name, _ in asked if server == "10.0.0.2"]
+    assert below == ["e.example.com", "d.e.example.com", "c.d.e.example.com", "a.b.c.d.e.example.com"], below
+    # Switched off, the root sees the whole name, which is what minimisation exists to stop.
+    fresh()
+    resolve.MINIMISE = False
+    resolve.resolve("www.shop.example.com", resolve.AAAA)
+    assert asked[0][1] == "www.shop.example.com", asked
+finally:
+    resolve.MINIMISE = True
+    resolve.ask = real_ask
+    fresh()
 
 # EDNS, offline, against a real UDP socket on this machine. The handler is a server: it
 # gets the query's bytes and returns the reply's. Nothing listens for TCP.
