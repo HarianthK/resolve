@@ -169,9 +169,12 @@ def remember_answer(key, records):
     return records
 
 
-def resolve(name, qtype=A, verbose=False, depth=0):
+def resolve(name, qtype=A, verbose=False, depth=0, aliases=()):
     if depth > 8: raise RuntimeError("too many CNAME or referral hops")
     name = name.rstrip(".").lower()
+    # aliases holds the names that led here by CNAME, so a chain that comes back is named, not chased.
+    if name in aliases:
+        raise LookupError("CNAME loop: " + " -> ".join(aliases[aliases.index(name):] + (name,)))
     now = clock()
     if missing.get(name, 0) > now:
         if verbose: print(f"  {name} does not exist, from the cache, {int(missing[name] - now)}s left")
@@ -215,7 +218,7 @@ def resolve(name, qtype=A, verbose=False, depth=0):
         cname = next((r for r in about if r["type"] == CNAME), None)
         if cname:
             if verbose: print(f"  {name} is an alias for {cname['value']}")
-            target = resolve(cname["value"], qtype, verbose, depth + 1)
+            target = resolve(cname["value"], qtype, verbose, depth + 1, aliases + (name,))
             # The alias is only good for as long as both it and what it points at are.
             return remember_answer(key, [dict(r, ttl=min(r["ttl"], cname["ttl"])) for r in target])
         referral = [r for r in reply["authority"] if r["type"] == NS]

@@ -305,6 +305,43 @@ finally:
     resolve.ask = real_ask
     fresh()
 
+# CNAME loops, offline: a pair that point at each other, a name that points at itself, and a
+# chain that runs into the pair. Each is named as a loop at once, not chased eight hops deep.
+ALIASES = {"loop.example.com": "round.example.com", "round.example.com": "loop.example.com",
+           "self.example.com": "self.example.com", "start.example.com": "loop.example.com"}
+
+
+def loop_ask(server, name, qtype=resolve.A, timeout=3, verbose=False):
+    packets.append(name)
+    empty = {"id": 0, "rcode": 0, "truncated": False, "answers": [], "authority": [], "additional": []}
+    if server in ROOT_IPS:
+        return dict(empty, authority=[{"name": "com", "type": resolve.NS, "ttl": 3600, "value": "a.gtld"}],
+                    additional=[{"name": "a.gtld", "type": resolve.A, "ttl": 3600, "value": "10.0.0.1"}])
+    if server == "10.0.0.1":
+        return dict(empty, authority=[{"name": "example.com", "type": resolve.NS, "ttl": 3600, "value": "ns.example.com"}],
+                    additional=[{"name": "ns.example.com", "type": resolve.A, "ttl": 3600, "value": "10.0.0.2"}])
+    return dict(empty, answers=[{"name": name, "type": resolve.CNAME, "ttl": 60, "value": ALIASES[name]}])
+
+
+resolve.ask = loop_ask
+try:
+    for start, loop in [("loop.example.com", "loop.example.com -> round.example.com -> loop.example.com"),
+                        ("self.example.com", "self.example.com -> self.example.com"),
+                        ("start.example.com", "loop.example.com -> round.example.com -> loop.example.com")]:
+        packets.clear()
+        try:
+            resolve.resolve(start)
+            raise AssertionError(f"{start} resolved")
+        except LookupError as e:
+            assert str(e) == f"CNAME loop: {loop}", e
+        # Each name in the chain asked once, and no more.
+        assert len([n for n in packets if n.endswith("example.com") and n != "example.com"]) <= 3, packets
+finally:
+    resolve.ask = real_ask
+    resolve.answers.clear()
+    resolve.known.clear()
+    resolve.known[""] = (float("inf"), list(ROOT_IPS))
+
 # EDNS, offline, against a real UDP socket on this machine. The handler is a server: it
 # gets the query's bytes and returns the reply's. Nothing listens for TCP.
 def serve(handler):

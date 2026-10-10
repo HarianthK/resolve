@@ -23,7 +23,8 @@ so it goes again, this time starting from the .org server it already knows.
 - Name compression, the pointers that let a reply say "same name as byte 12".
 - Referrals with glue (the name servers' addresses come along) and without
   (a name server's own name has to be resolved first, from scratch, and if one cannot be found the next is tried).
-- CNAME chains, and NXDOMAIN when a name does not exist.
+- CNAME chains, with a chain that loops back named as a loop, and NXDOMAIN
+  when a name does not exist.
 - QNAME minimisation (RFC 9156): each server is asked only about the next
   label down, so the root learns that you wanted something in `.org`, not
   that it was `en.wikipedia.org`.
