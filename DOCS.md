@@ -168,6 +168,23 @@ eleven, because `co.uk` is not a zone of its own and the CNAME it ends at,
 that a one-off. The tests check the exact names and types each server is asked,
 the NXDOMAIN fallback, and the cap, and `MINIMISE = False` turns it all off.
 
+## An old answer beats no answer
+
+When a zone's servers all go quiet, a strict resolver fails every lookup the
+moment its cached answers expire, even though those answers were very likely
+still right. RFC 8767 lets a resolver keep using an expired answer in that one
+situation. Here an expired answer up to a day old is given out when no server
+answers at all, with a TTL of 30 seconds so whoever asked comes back soon and
+gets a fresh one once the servers are up.
+
+The line that matters is between no answer and an answer. A server that says
+the name no longer exists has answered, and hiding that behind a stale address
+would keep sending people to a name that is gone. So the timeouts that end a
+lookup now raise their own error, `Unreachable`, and only that one is caught;
+NXDOMAIN, a bailiwick violation and a CNAME loop all still fail. The test plays
+an outage, a recovery, an answer past the one day limit and a name that
+disappears, and each of four deliberate breakages makes one of them fail.
+
 ## Random source ports and IDs are the security
 
 The query id is 16 bits and the reply must carry the same one. That, plus a

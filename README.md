@@ -36,6 +36,8 @@ so it goes again, this time starting from the .org server it already knows.
 - A cache that keeps every answer and referral for exactly as long as its TTL
   allows, so asking twice sends no packets the second time, and remembers
   names that do not exist for as long as their zone's SOA record says.
+- Serve-stale (RFC 8767): if no server answers at all, an answer that expired
+  less than a day ago is given out with a 30 second TTL rather than failing.
 - Failover: a server that times out or refuses is skipped, and each of the
   zone's other servers is tried before the lookup gives up.
 - Bailiwick checks: a server is believed only about its own part of the tree,

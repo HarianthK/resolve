@@ -24,6 +24,13 @@ missing = {}
 clock = time.monotonic  # a test swaps this to jump forward without waiting
 # RFC 9156: tell each server only the next label down, not the whole name. DOCS.md has why.
 MINIMISE = True
+# RFC 8767: when no server answers, an expired answer up to a day old is better than none,
+# handed out with a 30 second TTL so callers come back soon.
+STALE_FOR, STALE_TTL = 86400, 30
+
+
+class Unreachable(LookupError):
+    """No server for the name answered at all, as opposed to answering that it does not exist."""
 
 
 def build_query(name, qtype=A, edns=True):
@@ -138,7 +145,7 @@ def ask_any(servers, name, qtype, verbose):
         try: return server, ask(server, name, qtype, verbose=verbose)
         except (OSError, ValueError) as e:
             if verbose: print(f"  {server:<16} did not answer ({e or type(e).__name__}), trying another")
-    raise LookupError(f"none of the {len(servers)} servers asked about {name} answered")
+    raise Unreachable(f"none of the {len(servers)} servers asked about {name} answered")
 
 
 def addresses_of(ns_names, verbose, depth):
@@ -170,6 +177,16 @@ def remember_answer(key, records):
 
 
 def resolve(name, qtype=A, verbose=False, depth=0, aliases=()):
+    try:
+        return resolve_fresh(name, qtype, verbose, depth, aliases)
+    except Unreachable:
+        expires, records = answers.get((name.rstrip(".").lower(), qtype), (-math.inf, None))
+        if clock() - expires > STALE_FOR: raise
+        if verbose: print(f"  no server answered; serving {name} from an answer expired {int(clock() - expires)}s ago")
+        return [dict(r, ttl=STALE_TTL) for r in records]
+
+
+def resolve_fresh(name, qtype=A, verbose=False, depth=0, aliases=()):
     if depth > 8: raise RuntimeError("too many CNAME or referral hops")
     name = name.rstrip(".").lower()
     # aliases holds the names that led here by CNAME, so a chain that comes back is named, not chased.

@@ -305,6 +305,69 @@ finally:
     resolve.ask = real_ask
     fresh()
 
+# Serve-stale, offline (RFC 8767): an answer that has expired is used only when no server
+# answers at all, only for a day, and never over a server that says the name is gone.
+mode = "up"
+
+
+def outage_ask(server, name, qtype=resolve.A, timeout=3, verbose=False):
+    if mode == "down": raise socket.timeout("timed out")
+    empty = {"id": 0, "rcode": 0, "truncated": False, "answers": [], "authority": [], "additional": []}
+    if server in ROOT_IPS:
+        return dict(empty, authority=[{"name": "com", "type": resolve.NS, "ttl": 172800, "value": "a.gtld"}],
+                    additional=[{"name": "a.gtld", "type": resolve.A, "ttl": 172800, "value": "10.0.0.1"}])
+    if mode == "gone":
+        soa = {"name": "com", "type": resolve.SOA, "ttl": 900, "value": "a.gtld x 1 2 3 4 900", "minimum": 900}
+        return dict(empty, rcode=3, authority=[soa])
+    return dict(empty, answers=[{"name": name, "type": resolve.A, "ttl": 60, "value": "93.184.216.34" if mode == "up" else "10.9.9.9"}])
+
+
+now[0] = 10000.0
+resolve.ask, resolve.clock = outage_ask, (lambda: now[0])
+try:
+    mode = "up"
+    resolve.resolve("example.com")
+    # Expired, and every server is down: the old answer, with a 30 second TTL.
+    now[0] += 3600
+    mode = "down"
+    stale = resolve.resolve("example.com")
+    assert [(r["value"], r["ttl"]) for r in stale] == [("93.184.216.34", 30)], stale
+    # A name never answered before has nothing stale to give, so the outage shows.
+    try:
+        resolve.resolve("other.com")
+        raise AssertionError("an outage with nothing cached should fail")
+    except resolve.Unreachable:
+        pass
+    # With the servers back, the fresh answer wins over the stale one.
+    mode = "moved"
+    assert resolve.resolve("example.com")[0]["value"] == "10.9.9.9"
+    # More than a day past expiry, a stale answer is too old to give out.
+    now[0] += 60 + 86400 + 1
+    mode = "down"
+    try:
+        resolve.resolve("example.com")
+        raise AssertionError("an answer expired over a day ago was served")
+    except resolve.Unreachable:
+        pass
+    # A server saying the name no longer exists is an answer, not an outage: no stale answer.
+    resolve.answers.clear()
+    now[0] = 50000.0
+    mode = "up"
+    resolve.resolve("example.com")
+    now[0] += 3600
+    mode = "gone"
+    try:
+        resolve.resolve("example.com")
+        raise AssertionError("a stale answer hid an NXDOMAIN")
+    except LookupError as e:
+        assert "does not exist" in str(e), e
+finally:
+    resolve.ask, resolve.clock = real_ask, real_clock
+    resolve.answers.clear()
+    resolve.missing.clear()
+    resolve.known.clear()
+    resolve.known[""] = (float("inf"), list(ROOT_IPS))
+
 # CNAME loops, offline: a pair that point at each other, a name that points at itself, and a
 # chain that runs into the pair. Each is named as a loop at once, not chased eight hops deep.
 ALIASES = {"loop.example.com": "round.example.com", "round.example.com": "loop.example.com",
