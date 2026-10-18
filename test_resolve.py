@@ -29,6 +29,12 @@ srv = b"\xc0\x0c" + struct.pack("!HHIH", resolve.SRV, 1, 300, 12) + struct.pack(
 got = resolve.parse(struct.pack("!HHHHHH", 7, 0x8180, 1, 1, 0, 0) + srv_q + srv)["answers"][0]
 assert got["type"] == resolve.SRV and got["value"] == "10 60 5060 sip.example.com", got["value"]
 
+# PTR by hand: 1.2.0.192.in-addr.arpa names host.example, so the value is a name, not bytes.
+ptr_q = b"\x011\x012\x010\x03192\x07in-addr\x04arpa\x00" + struct.pack("!HH", resolve.PTR, 1)
+ptr = b"\xc0\x0c" + struct.pack("!HHIH", resolve.PTR, 1, 60, 14) + b"\x04host\x07example\x00"
+got = resolve.parse(struct.pack("!HHHHHH", 8, 0x8180, 1, 1, 0, 0) + ptr_q + ptr)["answers"][0]
+assert got["value"] == "host.example", got["value"]
+
 # The packet with the truncation bit set must say so, since that decides the TCP retry.
 assert resolve.parse(struct.pack("!HHHHHH", 1, 0x8380, 0, 0, 0, 0))["truncated"]
 

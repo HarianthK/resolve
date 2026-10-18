@@ -19,7 +19,8 @@ so it goes again, this time starting from the .org server it already knows.
 
 ## What it handles
 
-- A, AAAA, NS, CNAME, MX, TXT and SRV records, decoded from their wire form.
+- A, AAAA, NS, CNAME, MX, TXT, SRV and PTR records, decoded from their wire form,
+  and reverse lookups with `-x ADDRESS` for IPv4 and IPv6.
 - Name compression, the pointers that let a reply say "same name as byte 12".
 - Referrals with glue (the name servers' addresses come along) and without
   (a name server's own name has to be resolved first, from scratch, and if one cannot be found the next is tried).

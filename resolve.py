@@ -1,5 +1,6 @@
 # A DNS resolver that starts at the root servers and follows referrals itself.
 # Run: python resolve.py example.com   (add -v to see every hop). DOCS.md explains the format.
+import ipaddress
 import math
 import random
 import socket
@@ -10,8 +11,8 @@ import time
 ROOTS = {"a": "198.41.0.4", "b": "170.247.170.2", "c": "192.33.4.12", "d": "199.7.91.13", "e": "192.203.230.10",
          "f": "192.5.5.241", "g": "192.112.36.4", "h": "198.97.190.53", "i": "192.36.148.17", "j": "192.58.128.30",
          "k": "193.0.14.129", "l": "199.7.83.42", "m": "202.12.27.33"}
-A, NS, CNAME, SOA, MX, TXT, AAAA, SRV, OPT = 1, 2, 5, 6, 15, 16, 28, 33, 41
-TYPE_NAMES = {A: "A", NS: "NS", CNAME: "CNAME", AAAA: "AAAA", SOA: "SOA", MX: "MX", TXT: "TXT", SRV: "SRV"}
+A, NS, CNAME, SOA, PTR, MX, TXT, AAAA, SRV, OPT = 1, 2, 5, 6, 12, 15, 16, 28, 33, 41
+TYPE_NAMES = {A: "A", NS: "NS", CNAME: "CNAME", AAAA: "AAAA", SOA: "SOA", PTR: "PTR", MX: "MX", TXT: "TXT", SRV: "SRV"}
 FORMERR = 1
 # The UDP reply size EDNS asks for: DNS Flag Day 2020's figure, small enough never to fragment.
 EDNS_SIZE = 1232
@@ -64,7 +65,7 @@ def read_record(data, pos):
     rtype, rclass, ttl, rdlen = struct.unpack("!HHIH", data[pos:pos + 10])
     pos += 10
     rdata = data[pos:pos + rdlen]
-    if rtype in (NS, CNAME): value = read_name(data, pos)[0]
+    if rtype in (NS, CNAME, PTR): value = read_name(data, pos)[0]
     elif rtype == A: value = ".".join(str(b) for b in rdata)
     elif rtype == AAAA: value = socket.inet_ntop(socket.AF_INET6, rdata)
     elif rtype == MX: value = f"{struct.unpack('!H', rdata[:2])[0]} {read_name(data, pos + 2)[0]}"
@@ -255,8 +256,12 @@ def resolve_fresh(name, qtype=A, verbose=False, depth=0, aliases=()):
 
 if __name__ == "__main__":
     args = [a for a in sys.argv[1:] if not a.startswith("-")]
-    if not args: sys.exit("usage: python resolve.py NAME [A|AAAA|NS|MX|TXT|SRV] [-v]")
+    if not args: sys.exit("usage: python resolve.py NAME [A|AAAA|NS|MX|TXT|SRV|PTR] [-v], or -x ADDRESS")
     qtype = {v: k for k, v in TYPE_NAMES.items()}.get(args[1].upper() if len(args) > 1 else "A", A)
+    if "-x" in sys.argv:
+        # A reverse lookup is a PTR question about the address written backwards under in-addr.arpa or ip6.arpa.
+        try: args[0], qtype = ipaddress.ip_address(args[0]).reverse_pointer, PTR
+        except ValueError: sys.exit(f"resolve: {args[0]} is not an IPv4 or IPv6 address")
     try:
         for r in resolve(args[0], qtype, verbose="-v" in sys.argv):
             print(f"{r['name']}\t{r['ttl']}\t{TYPE_NAMES.get(r['type'], r['type'])}\t{r['value']}")
