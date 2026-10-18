@@ -10,8 +10,8 @@ import time
 ROOTS = {"a": "198.41.0.4", "b": "170.247.170.2", "c": "192.33.4.12", "d": "199.7.91.13", "e": "192.203.230.10",
          "f": "192.5.5.241", "g": "192.112.36.4", "h": "198.97.190.53", "i": "192.36.148.17", "j": "192.58.128.30",
          "k": "193.0.14.129", "l": "199.7.83.42", "m": "202.12.27.33"}
-A, NS, CNAME, SOA, MX, TXT, AAAA, OPT = 1, 2, 5, 6, 15, 16, 28, 41
-TYPE_NAMES = {A: "A", NS: "NS", CNAME: "CNAME", AAAA: "AAAA", SOA: "SOA", MX: "MX", TXT: "TXT"}
+A, NS, CNAME, SOA, MX, TXT, AAAA, SRV, OPT = 1, 2, 5, 6, 15, 16, 28, 33, 41
+TYPE_NAMES = {A: "A", NS: "NS", CNAME: "CNAME", AAAA: "AAAA", SOA: "SOA", MX: "MX", TXT: "TXT", SRV: "SRV"}
 FORMERR = 1
 # The UDP reply size EDNS asks for: DNS Flag Day 2020's figure, small enough never to fragment.
 EDNS_SIZE = 1232
@@ -68,6 +68,8 @@ def read_record(data, pos):
     elif rtype == A: value = ".".join(str(b) for b in rdata)
     elif rtype == AAAA: value = socket.inet_ntop(socket.AF_INET6, rdata)
     elif rtype == MX: value = f"{struct.unpack('!H', rdata[:2])[0]} {read_name(data, pos + 2)[0]}"
+    # SRV (RFC 2782): priority, weight and port, then the host the service runs on.
+    elif rtype == SRV: value = "{} {} {} ".format(*struct.unpack("!HHH", rdata[:6])) + read_name(data, pos + 6)[0]
     elif rtype == TXT: value = " ".join(repr(rdata[i + 1:i + 1 + rdata[i]].decode("utf-8", "replace")) for i in _txt_offsets(rdata))
     elif rtype == SOA:
         # Two names, then five numbers; the last says how long a "does not exist" may be kept.
@@ -253,7 +255,7 @@ def resolve_fresh(name, qtype=A, verbose=False, depth=0, aliases=()):
 
 if __name__ == "__main__":
     args = [a for a in sys.argv[1:] if not a.startswith("-")]
-    if not args: sys.exit("usage: python resolve.py NAME [A|AAAA|NS|MX|TXT] [-v]")
+    if not args: sys.exit("usage: python resolve.py NAME [A|AAAA|NS|MX|TXT|SRV] [-v]")
     qtype = {v: k for k, v in TYPE_NAMES.items()}.get(args[1].upper() if len(args) > 1 else "A", A)
     try:
         for r in resolve(args[0], qtype, verbose="-v" in sys.argv):

@@ -22,6 +22,13 @@ assert reply["answers"][1]["value"] == "10 mail.example.com", reply["answers"][1
 assert reply["answers"][2]["value"] == "'hi' 'v=s1'", reply["answers"][2]["value"]
 assert reply["answers"][2]["ttl"] == 60
 
+# SRV by hand: priority 10, weight 60, port 5060, and a target whose "example.com" points back
+# into the question (offset 22), so the name after the three numbers must follow the pointer.
+srv_q = b"\x04_sip\x04_tcp\x07example\x03com\x00" + struct.pack("!HH", resolve.SRV, 1)
+srv = b"\xc0\x0c" + struct.pack("!HHIH", resolve.SRV, 1, 300, 12) + struct.pack("!HHH", 10, 60, 5060) + b"\x03sip\xc0\x16"
+got = resolve.parse(struct.pack("!HHHHHH", 7, 0x8180, 1, 1, 0, 0) + srv_q + srv)["answers"][0]
+assert got["type"] == resolve.SRV and got["value"] == "10 60 5060 sip.example.com", got["value"]
+
 # The packet with the truncation bit set must say so, since that decides the TCP retry.
 assert resolve.parse(struct.pack("!HHHHHH", 1, 0x8380, 0, 0, 0, 0))["truncated"]
 
