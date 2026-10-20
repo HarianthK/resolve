@@ -35,6 +35,12 @@ ptr = b"\xc0\x0c" + struct.pack("!HHIH", resolve.PTR, 1, 60, 14) + b"\x04host\x0
 got = resolve.parse(struct.pack("!HHHHHH", 8, 0x8180, 1, 1, 0, 0) + ptr_q + ptr)["answers"][0]
 assert got["value"] == "host.example", got["value"]
 
+# CAA by hand: flags 0, the five-letter tag "issue", then the authority, 19 bytes in all.
+caa_q = b"\x07example\x03com\x00" + struct.pack("!HH", resolve.CAA, 1)
+caa = b"\xc0\x0c" + struct.pack("!HHIH", resolve.CAA, 1, 60, 19) + b"\x00\x05issue" + b"pki.goog" + b"abc"
+got = resolve.parse(struct.pack("!HHHHHH", 9, 0x8180, 1, 1, 0, 0) + caa_q + caa)["answers"][0]
+assert got["value"] == '0 issue "pki.googabc"', got["value"]
+
 # The packet with the truncation bit set must say so, since that decides the TCP retry.
 assert resolve.parse(struct.pack("!HHHHHH", 1, 0x8380, 0, 0, 0, 0))["truncated"]
 
