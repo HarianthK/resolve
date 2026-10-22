@@ -41,6 +41,16 @@ caa = b"\xc0\x0c" + struct.pack("!HHIH", resolve.CAA, 1, 60, 19) + b"\x00\x05iss
 got = resolve.parse(struct.pack("!HHHHHH", 9, 0x8180, 1, 1, 0, 0) + caa_q + caa)["answers"][0]
 assert got["value"] == '0 issue "pki.googabc"', got["value"]
 
+# DNSKEY and DS by hand: a key-signing key (flags 257, algorithm 13) and its digest in the parent.
+key_q = b"\x07example\x03com\x00" + struct.pack("!HH", resolve.DNSKEY, 1)
+key = b"\xc0\x0c" + struct.pack("!HHIH", resolve.DNSKEY, 1, 60, 7) + struct.pack("!HBB", 257, 3, 13) + b"key"
+got = resolve.parse(struct.pack("!HHHHHH", 10, 0x8180, 1, 1, 0, 0) + key_q + key)["answers"][0]
+assert got["value"] == "257 3 13 a2V5", got["value"]
+ds_q = b"\x07example\x03com\x00" + struct.pack("!HH", resolve.DS, 1)
+ds = b"\xc0\x0c" + struct.pack("!HHIH", resolve.DS, 1, 60, 7) + struct.pack("!HBB", 2371, 13, 2) + b"\xab\x01\xff"
+got = resolve.parse(struct.pack("!HHHHHH", 11, 0x8180, 1, 1, 0, 0) + ds_q + ds)["answers"][0]
+assert got["value"] == "2371 13 2 AB01FF", got["value"]
+
 # The packet with the truncation bit set must say so, since that decides the TCP retry.
 assert resolve.parse(struct.pack("!HHHHHH", 1, 0x8380, 0, 0, 0, 0))["truncated"]
 

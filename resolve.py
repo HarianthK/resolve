@@ -1,5 +1,6 @@
 # A DNS resolver that starts at the root servers and follows referrals itself.
 # Run: python resolve.py example.com   (add -v to see every hop). DOCS.md explains the format.
+import base64
 import ipaddress
 import math
 import random
@@ -11,8 +12,8 @@ import time
 ROOTS = {"a": "198.41.0.4", "b": "170.247.170.2", "c": "192.33.4.12", "d": "199.7.91.13", "e": "192.203.230.10",
          "f": "192.5.5.241", "g": "192.112.36.4", "h": "198.97.190.53", "i": "192.36.148.17", "j": "192.58.128.30",
          "k": "193.0.14.129", "l": "199.7.83.42", "m": "202.12.27.33"}
-A, NS, CNAME, SOA, PTR, MX, TXT, AAAA, SRV, OPT, CAA = 1, 2, 5, 6, 12, 15, 16, 28, 33, 41, 257
-TYPE_NAMES = {A: "A", NS: "NS", CNAME: "CNAME", AAAA: "AAAA", SOA: "SOA", PTR: "PTR", MX: "MX", TXT: "TXT", SRV: "SRV", CAA: "CAA"}
+A, NS, CNAME, SOA, PTR, MX, TXT, AAAA, SRV, OPT, DS, DNSKEY, CAA = 1, 2, 5, 6, 12, 15, 16, 28, 33, 41, 43, 48, 257
+TYPE_NAMES = {A: "A", NS: "NS", CNAME: "CNAME", AAAA: "AAAA", SOA: "SOA", PTR: "PTR", MX: "MX", TXT: "TXT", SRV: "SRV", DS: "DS", DNSKEY: "DNSKEY", CAA: "CAA"}
 FORMERR = 1
 # The UDP reply size EDNS asks for: DNS Flag Day 2020's figure, small enough never to fragment.
 EDNS_SIZE = 1232
@@ -72,6 +73,10 @@ def read_record(data, pos):
     # SRV (RFC 2782): priority, weight and port, then the host the service runs on.
     # CAA (RFC 8659): a flags byte, a tag such as issue, then which certificate authority it names.
     elif rtype == CAA: value = f'{rdata[0]} {rdata[2:2 + rdata[1]].decode("ascii", "replace")} "{rdata[2 + rdata[1]:].decode("utf-8", "replace")}"'
+    # DNSSEC, shown but not checked: a key is flags, protocol, algorithm and the key itself; a DS is
+    # the parent's fingerprint of a child's key: its tag, algorithm, digest type and digest.
+    elif rtype == DNSKEY: value = "{} {} {} ".format(*struct.unpack("!HBB", rdata[:4])) + base64.b64encode(rdata[4:]).decode()
+    elif rtype == DS: value = "{} {} {} ".format(*struct.unpack("!HBB", rdata[:4])) + rdata[4:].hex().upper()
     elif rtype == SRV: value = "{} {} {} ".format(*struct.unpack("!HHH", rdata[:6])) + read_name(data, pos + 6)[0]
     elif rtype == TXT: value = " ".join(repr(rdata[i + 1:i + 1 + rdata[i]].decode("utf-8", "replace")) for i in _txt_offsets(rdata))
     elif rtype == SOA:
@@ -258,7 +263,7 @@ def resolve_fresh(name, qtype=A, verbose=False, depth=0, aliases=()):
 
 if __name__ == "__main__":
     args = [a for a in sys.argv[1:] if not a.startswith("-")]
-    if not args: sys.exit("usage: python resolve.py NAME [A|AAAA|NS|MX|TXT|SRV|PTR|CAA] [-v], or -x ADDRESS")
+    if not args: sys.exit("usage: python resolve.py NAME [A|AAAA|NS|MX|TXT|SRV|PTR|CAA|DS|DNSKEY] [-v], or -x ADDRESS")
     qtype = {v: k for k, v in TYPE_NAMES.items()}.get(args[1].upper() if len(args) > 1 else "A", A)
     if "-x" in sys.argv:
         # A reverse lookup is a PTR question about the address written backwards under in-addr.arpa or ip6.arpa.
