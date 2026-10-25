@@ -19,9 +19,14 @@ so it goes again, this time starting from the .org server it already knows.
 
 ## What it handles
 
-- A, AAAA, NS, CNAME, MX, TXT, SRV, PTR and CAA records, decoded from their wire form,
-  DNSSEC DNSKEY and DS records shown (not validated),
-  and reverse lookups with `-x ADDRESS` for IPv4 and IPv6.
+- A, AAAA, NS, CNAME, MX, TXT, SRV, PTR, CAA, DNSKEY, DS and RRSIG records,
+  decoded from their wire form, and reverse lookups with `-x ADDRESS` for IPv4
+  and IPv6.
+- DNSSEC validation with `--dnssec` (in `dnssec.py`): the answer is used only
+  if its signature chains up to the root zone's published key, through each
+  zone's DS record in its parent. RSA/SHA-256, RSA/SHA-512 and ECDSA P-256,
+  written from the arithmetic up, with no crypto library. A forged answer is
+  called BOGUS and not printed; an unsigned zone is called insecure.
 - Name compression, the pointers that let a reply say "same name as byte 12".
 - Referrals with glue (the name servers' addresses come along) and without
   (a name server's own name has to be resolved first, from scratch, and if one cannot be found the next is tried).
@@ -54,10 +59,21 @@ one afternoon. [DOCS.md](DOCS.md) is what I learned.
 
 ## Running it
 
-    python resolve.py NAME [A|AAAA|NS|MX|TXT] [-v]
+    python resolve.py NAME [A|AAAA|NS|MX|TXT|SRV|PTR|CAA|DS|DNSKEY] [-v] [--dnssec]
     python test_resolve.py
+    python test_dnssec.py
+
+    $ python resolve.py cloudflare.com AAAA --dnssec
+    cloudflare.com	300	AAAA	2606:4700::6810:85e5
+    cloudflare.com	300	AAAA	2606:4700::6810:84e5
+    ; secure: . key 38696 (RSA/SHA-256), the root trust anchor
+    ;   com key 19718 (ECDSA P-256/SHA-256), vouched for by a DS in .
+    ;   cloudflare.com key 2371 (ECDSA P-256/SHA-256), vouched for by a DS in com
+    ;   cloudflare.com AAAA signed by cloudflare.com key 34505
 
 The test parses a packet built by hand, breaks on any parsing mistake, checks
 the cache against a scripted network that counts every packet while a fake
 clock jumps forward, and then checks one live answer against the system
-resolver.
+resolver. The DNSSEC test replays real signed answers recorded from the root,
+org, nl and four zones under them, refuses ten kinds of forgery made from
+them, and then proves cloudflare.com live.

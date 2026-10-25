@@ -190,3 +190,99 @@ disappears, and each of four deliberate breakages makes one of them fail.
 The query id is 16 bits and the reply must carry the same one. That, plus a
 random source port, is all that stops someone on the path from answering
 first with a lie. It is thin, which is why DNSSEC and DNS over HTTPS exist.
+
+## Checking the signatures
+
+DNSSEC does not hide anything; it signs. Each signed zone has keys in DNSKEY
+records, and next to every set of records (all the A records of a name, say)
+it publishes an RRSIG: which key signed, when the signature starts and stops
+being valid, and the signature itself. A resolver that sets the DO bit in its
+query gets the RRSIGs alongside the answer.
+
+A signature only proves the zone's own key signed it, and anyone can make a
+key. What makes it worth something is the chain. The zone's parent publishes
+a DS record for it, a hash of the child's key-signing key, and the DS is itself
+signed by the parent's keys, whose own DS sits in the grandparent, and so on up
+to the root. The root has no parent, so its key is the one thing taken on
+trust: `ANCHORS` holds the hashes IANA publishes of the two root keys, KSK-2017
+(tag 20326) and KSK-2024 (tag 38696). Checking `cloudflare.com` is then:
+
+1. the root's DNSKEY set, which must hold a key matching an anchor and be
+   signed by it;
+2. the DS for `com` in the root, signed by a root key;
+3. `com`'s DNSKEY set, holding the key that DS hashes and signed by it;
+4. the same again for `cloudflare.com` in `com`;
+5. the A records, signed by one of `cloudflare.com`'s keys.
+
+What gets signed is not the bytes that arrived. RFC 4034 section 6 defines a
+canonical form: names spelled out in full (no compression pointers) and in
+lower case, the records of a set sorted by their data, and the TTL the signer
+set rather than the one a cache has been counting down. So the parser now
+keeps a `wire` field for every record, its data with any names in it written
+out that way. Each of those rules has a test that fails when the rule is
+dropped: unsorted records break the root's two-key set, upper case breaks MX,
+and a cached TTL of 5 still proves out.
+
+The two algorithms nearly every zone uses are written out, with no crypto
+library. RSA/SHA-256 (the root and `org`) is one modular exponentiation: raise
+the signature to the key's exponent and the result must be the PKCS #1 v1.5
+padding around the hash. ECDSA P-256 (`com`, Cloudflare, most zones signed
+lately) is arithmetic on an elliptic curve: with the key a point Q and the
+signature (r, s), the point (e/s)G + (r/s)Q must have r as its x coordinate,
+where e is the hash. It takes about 30 milliseconds a signature in plain
+Python. Checks run against signatures made by the zones' own signing software,
+so a mistake in the arithmetic shows up as a real signature refused.
+
+Three outcomes, not two. Secure means the chain held. Bogus means something
+claims to be signed and the claim fails, and the answer is not printed at all.
+Insecure means nothing says the answer should be signed: `github.com` has no DS
+in `com`, so there is nothing to check it against. The trap is that an
+attacker can also strip signatures from a signed answer. So an unsigned answer
+is only insecure if its zone (the nearest name above it with an SOA) has no
+DS; in a signed zone it is bogus.
+
+What is not checked: the proof that something does not exist. A DS that is
+missing, or an answer that is NODATA or NXDOMAIN, comes with NSEC or NSEC3
+records proving the gap, and those are taken at their word here. A real
+validator checks them, and until this one does, an attacker who can stop the
+DS for a signed zone from arriving gets that zone called insecure rather than
+bogus. Ed25519, ECDSA P-384 and the old SHA-1 algorithms also count as
+insecure, as RFC 4035 says to treat algorithms a validator does not know.
+
+### Two bugs it found in the resolver
+
+The root itself had never been asked about. `build_query` wrote the empty name
+as an empty label and then the end of the name, two zero bytes, and the root
+servers called it a format error. It now writes names with `name_wire`, which
+writes the root as the one zero byte it is.
+
+And the cache sent DS questions to the wrong servers. Once `cloudflare.com`
+has been looked up, its own servers are cached as the place to start for any
+name under it, and they are asked for its DS. But the DS lives in the parent,
+`com`, and the child's servers have nothing to say. A question for a DS now
+never starts at the zone it is about.
+
+### Testing it
+
+`test_dnssec.py` replays answers recorded from the real servers on 2026-10-24
+(`python test_dnssec.py --record` asks again), at the time they were
+recorded, so the signatures are still in date. They cover RSA at the root,
+`org` and `nlnetlabs.nl`, ECDSA in `com`, `nl` and the zones below, a CNAME
+that is signed too (`www.sidn.nl`), an MX set (names inside the data), and an
+unsigned zone. Then it forges: an address changed, a signature bit changed,
+the signature stripped, a DS changed, `org`'s key changed, the MX names
+upper-cased, a DS signed by the zone itself, the answers a year later, and a
+trust anchor that is not the root's. The last is the attack the DS exists for:
+an attacker's own ECDSA key that signs its own key set and the answer
+correctly, and is refused only because no DS hashes it. Finally it proves
+`cloudflare.com` live.
+
+Eleven breakages, one at a time, each fail it: records left unsorted, names
+left in their case, the validity window ignored, the key tag folded wrongly,
+ECDSA's two multipliers swapped, the wrong RSA padding, keys trusted without
+the DS, stripped signatures called insecure, a DS's signer not checked, the DS
+asked of the child, and the root sent as two zero bytes. The first run of that
+loop was wrong: two breakages failed with the previous breakage's message,
+because a change of the same size, restored within the same second, left
+Python's cached bytecode looking current. The loop now deletes `__pycache__`
+and runs `python -B`.

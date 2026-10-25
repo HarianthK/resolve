@@ -1,0 +1,714 @@
+{
+"answers": {
+"github.com|1": [
+[
+{
+"name": "github.com",
+"ttl": 60,
+"type": 1,
+"value": "140.82.114.3",
+"wire": "8c527203"
+}
+],
+[]
+],
+"github.com|43": [
+[],
+[]
+],
+"github.com|6": [
+[
+{
+"minimum": 86400,
+"name": "github.com",
+"ttl": 900,
+"type": 6,
+"value": "ns-1707.awsdns-21.co.uk awsdns-hostmaster.amazon.com 1 7200 900 1209600 86400",
+"wire": "076e732d3137303709617773646e732d323102636f02756b0011617773646e732d686f73746d617374657206616d617a6f6e03636f6d000000000100001c20000003840012750000015180"
+}
+],
+[]
+],
+"ietf.org|43": [
+[
+{
+"name": "ietf.org",
+"ttl": 3600,
+"type": 43,
+"value": "2371 13 2 B1AE88AFF068DDEC3F7FF662F47D6599C74134425C67106E6C203942D6227EA4",
+"wire": "09430d02b1ae88aff068ddec3f7ff662f47d6599c74134425c67106e6c203942d6227ea4"
+}
+],
+[
+{
+"name": "ietf.org",
+"rrsig": {
+"algorithm": 8,
+"covered": 43,
+"expiration": 1794065336,
+"inception": 1792247336,
+"key_tag": 25488,
+"labels": 2,
+"original_ttl": 3600,
+"signature": "0520cbce4ba24762e857d47dae94711556867838d8df1e53d1e4a2617d1577574447160fcc3e74e54d6cf4245c05d2069ad4a2947e7eadddd09d69c824f08b0920fdfc4f7e5f95447c07f6344fa6110fbb26aa45e9945ce7712e58ea2223b23cfb10f0062f11537db9f830d25336e7aa5415e6b4622b0b58a7d29b487c6f097e",
+"signer": "org"
+},
+"ttl": 3600,
+"type": 46,
+"value": "DS 8 2 3600 1794065336 1792247336 25488 org. BSDLzkuiR2LoV9R9rpRxFVaGeDjY3x5T0eSiYX0Vd1dERxYPzD505U1s9CRcBdIGmtSilH5+rd3QnWnIJPCLCSD9/E9+X5VEfAf2NE+mEQ+7JqpF6ZRc53EuWOoiI7I8+xDwBi8RU325+DDSUzbnqlQV5rRiKwtYp9KbSHxvCX4=",
+"wire": "002b080200000e106aef43b86ad386286390036f7267000520cbce4ba24762e857d47dae94711556867838d8df1e53d1e4a2617d1577574447160fcc3e74e54d6cf4245c05d2069ad4a2947e7eadddd09d69c824f08b0920fdfc4f7e5f95447c07f6344fa6110fbb26aa45e9945ce7712e58ea2223b23cfb10f0062f11537db9f830d25336e7aa5415e6b4622b0b58a7d29b487c6f097e"
+}
+]
+],
+"ietf.org|48": [
+[
+{
+"name": "ietf.org",
+"ttl": 3600,
+"type": 48,
+"value": "257 3 13 mdsswUyr3DPW132mOi8V9xESWE8jTo0dxCjjnopKl+GqJxpVXckHAeF+KkxLbxILfDLUT0rAK9iUzy1L53eKGQ==",
+"wire": "0101030d99db2cc14cabdc33d6d77da63a2f15f71112584f234e8d1dc428e39e8a4a97e1aa271a555dc90701e17e2a4c4b6f120b7c32d44f4ac02bd894cf2d4be7778a19"
+},
+{
+"name": "ietf.org",
+"ttl": 3600,
+"type": 48,
+"value": "256 3 13 oJMRESz5E4gYzS/q6XDrvU1qMPYIjCWzJaOau8XNEZeqCYKD5ar0IRd8KqXXFJkqmVfRvMGPmM1x8fGAa2XhSA==",
+"wire": "0100030da09311112cf9138818cd2feae970ebbd4d6a30f6088c25b325a39abbc5cd1197aa098283e5aaf421177c2aa5d714992a9957d1bcc18f98cd71f1f1806b65e148"
+}
+],
+[
+{
+"name": "ietf.org",
+"rrsig": {
+"algorithm": 13,
+"covered": 48,
+"expiration": 1796275839,
+"inception": 1791005439,
+"key_tag": 2371,
+"labels": 2,
+"original_ttl": 3600,
+"signature": "75748d764320fed979aa6eb00ee47d40eef55e6ee70d6bbd8ca8ebbe86dbbeb8d850f7ca6a88bc9250a321b8bcb5df4d7b822405891f9734e94037f9525545c0",
+"signer": "ietf.org"
+},
+"ttl": 3600,
+"type": 46,
+"value": "DNSKEY 13 2 3600 1796275839 1791005439 2371 ietf.org. dXSNdkMg/tl5qm6wDuR9QO71Xm7nDWu9jKjrvobbvrjYUPfKaoi8klCjIbi8td9Ne4IkBYkflzTpQDf5UlVFwA==",
+"wire": "00300d0200000e106b10fe7f6ac092ff09430469657466036f72670075748d764320fed979aa6eb00ee47d40eef55e6ee70d6bbd8ca8ebbe86dbbeb8d850f7ca6a88bc9250a321b8bcb5df4d7b822405891f9734e94037f9525545c0"
+}
+]
+],
+"isc.org|15": [
+[
+{
+"name": "isc.org",
+"ttl": 300,
+"type": 15,
+"value": "5 mx.pao1.isc.org",
+"wire": "0005026d780470616f3103697363036f726700"
+},
+{
+"name": "isc.org",
+"ttl": 300,
+"type": 15,
+"value": "10 mx.ams1.isc.org",
+"wire": "000a026d7804616d733103697363036f726700"
+}
+],
+[
+{
+"name": "isc.org",
+"rrsig": {
+"algorithm": 13,
+"covered": 15,
+"expiration": 1793803747,
+"inception": 1792592832,
+"key_tag": 27566,
+"labels": 2,
+"original_ttl": 300,
+"signature": "5939402bba12ed6b5040c7ef0c984c412d7efe4d9043c5c782f9c8ad8d4d49bb8f3d8d4e6c60bb3a59502e46e185ee32cb0674efb8e0374faefe503e5e61a131",
+"signer": "isc.org"
+},
+"ttl": 300,
+"type": 46,
+"value": "MX 13 2 300 1793803747 1792592832 27566 isc.org. WTlAK7oS7WtQQMfvDJhMQS1+/k2QQ8XHgvnIrY1NSbuPPY1ObGC7OllQLkbhhe4yywZ077jgN0+u/lA+XmGhMQ==",
+"wire": "000f0d020000012c6aeb45e36ad8cbc06bae03697363036f7267005939402bba12ed6b5040c7ef0c984c412d7efe4d9043c5c782f9c8ad8d4d49bb8f3d8d4e6c60bb3a59502e46e185ee32cb0674efb8e0374faefe503e5e61a131"
+}
+]
+],
+"isc.org|43": [
+[
+{
+"name": "isc.org",
+"ttl": 3600,
+"type": 43,
+"value": "7250 13 2 A30B3F78B6DDE9A4A9A2AD0C805518B4F49EC62E7D3F4531D33DE697CDA01CB2",
+"wire": "1c520d02a30b3f78b6dde9a4a9a2ad0c805518b4f49ec62e7d3f4531d33de697cda01cb2"
+}
+],
+[
+{
+"name": "isc.org",
+"rrsig": {
+"algorithm": 8,
+"covered": 43,
+"expiration": 1794065336,
+"inception": 1792247336,
+"key_tag": 25488,
+"labels": 2,
+"original_ttl": 3600,
+"signature": "0b88ac9d3fdb5302b58ca4bb3461746fb6e89b89b6e5c980744d0eaaa4d03985453af8fdf608106c94c65e7ac0df7c7723191f217d38a2cc8ecac10cfcf6cb2aa119b028d3d7d8e7b5371a8b6ec8b90d0905637f20ad5f6736ec1f27f2f1446b482faa2a588d261368efbf4442e5709e37696596c0f94a6fc08bf29c63637aa7",
+"signer": "org"
+},
+"ttl": 3600,
+"type": 46,
+"value": "DS 8 2 3600 1794065336 1792247336 25488 org. C4isnT/bUwK1jKS7NGF0b7bom4m25cmAdE0OqqTQOYVFOvj99ggQbJTGXnrA33x3IxkfIX04osyOysEM/PbLKqEZsCjT19jntTcai27IuQ0JBWN/IK1fZzbsHyfy8URrSC+qKliNJhNo779EQuVwnjdpZZbA+UpvwIvynGNjeqc=",
+"wire": "002b080200000e106aef43b86ad386286390036f7267000b88ac9d3fdb5302b58ca4bb3461746fb6e89b89b6e5c980744d0eaaa4d03985453af8fdf608106c94c65e7ac0df7c7723191f217d38a2cc8ecac10cfcf6cb2aa119b028d3d7d8e7b5371a8b6ec8b90d0905637f20ad5f6736ec1f27f2f1446b482faa2a588d261368efbf4442e5709e37696596c0f94a6fc08bf29c63637aa7"
+}
+]
+],
+"isc.org|48": [
+[
+{
+"name": "isc.org",
+"ttl": 3600,
+"type": 48,
+"value": "257 3 13 zEoOfseNFDM+E8spu7RR2Ar/GzFqAehe4yapWLiv6McIUF6xmI5GcIQ3+uLAizS2cNWHt6EArVj8ogjtrRXwfw==",
+"wire": "0101030dcc4a0e7ec78d14333e13cb29bbb451d80aff1b316a01e85ee326a958b8afe8c708505eb1988e46708437fae2c08b34b670d587b7a100ad58fca208edad15f07f"
+},
+{
+"name": "isc.org",
+"ttl": 3600,
+"type": 48,
+"value": "256 3 13 1CS+VQcRn4lGTK+b3wDjVO0hFDx4DV7s3Q1Fwxuq9ahd255FRny4f4vdZOMMMxpbRH5Zhwoh/706IV0v9JwjlA==",
+"wire": "0100030dd424be5507119f89464caf9bdf00e354ed21143c780d5eecdd0d45c31baaf5a85ddb9e45467cb87f8bdd64e30c331a5b447e59870a21ffbd3a215d2ff49c2394"
+}
+],
+[
+{
+"name": "isc.org",
+"rrsig": {
+"algorithm": 13,
+"covered": 48,
+"expiration": 1793835099,
+"inception": 1792623602,
+"key_tag": 7250,
+"labels": 2,
+"original_ttl": 3600,
+"signature": "57231b43e06a331f84044a2a46f184d72d4f947e6ee92438256033e5c02dfab867bc4c94fe14e6ba0e87fefd93c4ecc0a3065aed702f435607309ce801a11ab7",
+"signer": "isc.org"
+},
+"ttl": 3600,
+"type": 46,
+"value": "DNSKEY 13 2 3600 1793835099 1792623602 7250 isc.org. VyMbQ+BqMx+EBEoqRvGE1y1PlH5u6SQ4JWAz5cAt+rhnvEyU/hTmug6H/v2TxOzAowZa7XAvQ1YHMJzoAaEatw==",
+"wire": "00300d0200000e106aebc05b6ad943f21c5203697363036f72670057231b43e06a331f84044a2a46f184d72d4f947e6ee92438256033e5c02dfab867bc4c94fe14e6ba0e87fefd93c4ecc0a3065aed702f435607309ce801a11ab7"
+}
+]
+],
+"nlnetlabs.nl|1": [
+[
+{
+"name": "nlnetlabs.nl",
+"ttl": 240,
+"type": 1,
+"value": "128.140.76.106",
+"wire": "808c4c6a"
+}
+],
+[
+{
+"name": "nlnetlabs.nl",
+"rrsig": {
+"algorithm": 8,
+"covered": 1,
+"expiration": 1795222206,
+"inception": 1792803006,
+"key_tag": 42393,
+"labels": 2,
+"original_ttl": 240,
+"signature": "38b12b73db548fa235f467ecc4e1f4d6eeee4a25c761e4250983b80285af50a441995bfcb2263c0c5f7643f58f3a1e9cc0afe935c88d56d1262b590a7806f6b42b60f35b232764a43d9cc90920291281436ec72490b9a1bc71e8ddc9b18c33e8218686ea8e7e73f614cb9a1d7e22920f137a2a1fe8c9f4b9abb24f45998989e5",
+"signer": "nlnetlabs.nl"
+},
+"ttl": 240,
+"type": 46,
+"value": "A 8 2 240 1795222206 1792803006 42393 nlnetlabs.nl. OLErc9tUj6I19GfsxOH01u7uSiXHYeQlCYO4AoWvUKRBmVv8siY8DF92Q/WPOh6cwK/pNciNVtEmK1kKeAb2tCtg81sjJ2SkPZzJCSApEoFDbsckkLmhvHHo3cmxjDPoIYaG6o5+c/YUy5odfiKSDxN6Kh/oyfS5q7JPRZmJieU=",
+"wire": "00010802000000f06b00eabe6adc00bea599096e6c6e65746c616273026e6c0038b12b73db548fa235f467ecc4e1f4d6eeee4a25c761e4250983b80285af50a441995bfcb2263c0c5f7643f58f3a1e9cc0afe935c88d56d1262b590a7806f6b42b60f35b232764a43d9cc90920291281436ec72490b9a1bc71e8ddc9b18c33e8218686ea8e7e73f614cb9a1d7e22920f137a2a1fe8c9f4b9abb24f45998989e5"
+}
+]
+],
+"nlnetlabs.nl|43": [
+[
+{
+"name": "nlnetlabs.nl",
+"ttl": 3600,
+"type": 43,
+"value": "50602 8 2 FA8EE175C47325F4BD46D8A4083C3EBEB11C977D689069F2B41F1A29B22446B1",
+"wire": "c5aa0802fa8ee175c47325f4bd46d8a4083c3ebeb11c977d689069f2b41f1a29b22446b1"
+}
+],
+[
+{
+"name": "nlnetlabs.nl",
+"rrsig": {
+"algorithm": 13,
+"covered": 43,
+"expiration": 1794677374,
+"inception": 1792249646,
+"key_tag": 60847,
+"labels": 2,
+"original_ttl": 3600,
+"signature": "36097d6ccb02c83005b32812656f121f908840bae7d006c9cfd488a626d5e0284999a3a2b615918c6759a159b01dae149febe13da8f3247df43138ab776356ed",
+"signer": "nl"
+},
+"ttl": 3600,
+"type": 46,
+"value": "DS 13 2 3600 1794677374 1792249646 60847 nl. Ngl9bMsCyDAFsygSZW8SH5CIQLrn0AbJz9SIpibV4ChJmaOithWRjGdZoVmwHa4Un+vhPajzJH30MTird2NW7Q==",
+"wire": "002b0d0200000e106af89a7e6ad38f2eedaf026e6c0036097d6ccb02c83005b32812656f121f908840bae7d006c9cfd488a626d5e0284999a3a2b615918c6759a159b01dae149febe13da8f3247df43138ab776356ed"
+}
+]
+],
+"nlnetlabs.nl|48": [
+[
+{
+"name": "nlnetlabs.nl",
+"ttl": 3600,
+"type": 48,
+"value": "256 3 8 AwEAAdR7XR95OaAN9Rz7TbtPalQ9guQk7zfxTHYNKhsiwTZA9z+F16nD0VeBlk7dNik3ETpT2GLAwr9sntG898JwurCDe353wHPvjZtMCdiTVp3cRCrjuCEvoFpmZNN82H0gaH/4v8mkv/QBDAkDSncYjz/FqHKAeYy3cMcjY6RyVweh",
+"wire": "0100030803010001d47b5d1f7939a00df51cfb4dbb4f6a543d82e424ef37f14c760d2a1b22c13640f73f85d7a9c3d15781964edd362937113a53d862c0c2bf6c9ed1bcf7c270bab0837b7e77c073ef8d9b4c09d893569ddc442ae3b8212fa05a6664d37cd87d20687ff8bfc9a4bff4010c09034a77188f3fc5a87280798cb770c72363a4725707a1"
+},
+{
+"name": "nlnetlabs.nl",
+"ttl": 3600,
+"type": 48,
+"value": "257 3 8 AwEAAbwL6LuXTLXtb23CsXhpkxxyGbEFUROh/L8BWA1EEF8LdQ4Rmsj4D5D8uAnRFDkNhM6XiII9xcsavwBGNwHxzUaij4MZQu1vrzcfGIJLcC1QpaZmSH9WqIYFQci+T4s4UfDrrS96wO/H0nJvFmavWVX/7p1Q6dv0ArwzXMXaHGrRVdEgK2MDS3dFRngx5JC5fwD7YnwH08EAoFRjdAoXe+etOAeGaOT9IGjVM5LKkN2k6fIRvZ2l9eu5/o+h5L+kpDRcapW2QiL21hCcmwpW50Llfx9Ovk+M7TBjp4iT7Tc8gLzRZr24LmXEyABb54WW3aoF5k8DZPot9ogUjxVN/dM=",
+"wire": "0101030803010001bc0be8bb974cb5ed6f6dc2b17869931c7219b1055113a1fcbf01580d44105f0b750e119ac8f80f90fcb809d114390d84ce9788823dc5cb1abf00463701f1cd46a28f831942ed6faf371f18824b702d50a5a666487f56a8860541c8be4f8b3851f0ebad2f7ac0efc7d2726f1666af5955ffee9d50e9dbf402bc335cc5da1c6ad155d1202b63034b7745467831e490b97f00fb627c07d3c100a05463740a177be7ad38078668e4fd2068d53392ca90dda4e9f211bd9da5f5ebb9fe8fa1e4bfa4a4345c6a95b64222f6d6109c9b0a56e742e57f1f4ebe4f8ced3063a78893ed373c80bcd166bdb82e65c4c8005be78596ddaa05e64f0364fa2df688148f154dfdd3"
+}
+],
+[
+{
+"name": "nlnetlabs.nl",
+"rrsig": {
+"algorithm": 8,
+"covered": 48,
+"expiration": 1795222206,
+"inception": 1792803006,
+"key_tag": 50602,
+"labels": 2,
+"original_ttl": 3600,
+"signature": "369409c9242a3144072ecc8eb499f172d3c631f556e8115b59a770abfe6e8108a410e7a27e6a03acc547053cdd14f7113e46a086eedfb49ff06abed0d26fb9dde1257cff7216f71ef5d988e857dce90cd89a94b7d6f889c5c88128fb1f18fe0f53a7712d02bf8a6b40c91b6fbc06da4c28fecabf6c49528e5b9481ab3c10f2a650525bd45f5eeb24b30c7b6bae78b21c3d355e4d8f792139cbbbe1e50cbe2f3fc6b15560f8b4bc2fd4be6aa595ad23f1f1c3ee0ea3322919c65d9ea42dc52e6579702b9284e2528694f3c89a6c3f4007ab30de3bd0c6f89b645a6ffbdb10aba7a751c071debcc3ea1ff746f2f0c09dfec972f9234df1acb962a72841bd0e67dd",
+"signer": "nlnetlabs.nl"
+},
+"ttl": 3600,
+"type": 46,
+"value": "DNSKEY 8 2 3600 1795222206 1792803006 50602 nlnetlabs.nl. NpQJySQqMUQHLsyOtJnxctPGMfVW6BFbWadwq/5ugQikEOeifmoDrMVHBTzdFPcRPkaghu7ftJ/war7Q0m+53eElfP9yFvce9dmI6Ffc6QzYmpS31viJxciBKPsfGP4PU6dxLQK/imtAyRtvvAbaTCj+yr9sSVKOW5SBqzwQ8qZQUlvUX17rJLMMe2uueLIcPTVeTY95ITnLu+HlDL4vP8axVWD4tLwv1L5qpZWtI/Hxw+4OozIpGcZdnqQtxS5leXArkoTiUoaU88iabD9AB6sw3jvQxvibZFpv+9sQq6enUcBx3rzD6h/3RvLwwJ3+yXL5I03xrLlipyhBvQ5n3Q==",
+"wire": "0030080200000e106b00eabe6adc00bec5aa096e6c6e65746c616273026e6c00369409c9242a3144072ecc8eb499f172d3c631f556e8115b59a770abfe6e8108a410e7a27e6a03acc547053cdd14f7113e46a086eedfb49ff06abed0d26fb9dde1257cff7216f71ef5d988e857dce90cd89a94b7d6f889c5c88128fb1f18fe0f53a7712d02bf8a6b40c91b6fbc06da4c28fecabf6c49528e5b9481ab3c10f2a650525bd45f5eeb24b30c7b6bae78b21c3d355e4d8f792139cbbbe1e50cbe2f3fc6b15560f8b4bc2fd4be6aa595ad23f1f1c3ee0ea3322919c65d9ea42dc52e6579702b9284e2528694f3c89a6c3f4007ab30de3bd0c6f89b645a6ffbdb10aba7a751c071debcc3ea1ff746f2f0c09dfec972f9234df1acb962a72841bd0e67dd"
+}
+]
+],
+"nl|43": [
+[
+{
+"name": "nl",
+"ttl": 86399,
+"type": 43,
+"value": "17153 13 2 C5DFDDC91E7532562A35F3C2CD30823894BE08F20101F1ABF45C8AB9739F3F49",
+"wire": "43010d02c5dfddc91e7532562a35f3c2cd30823894be08f20101f1abf45c8ab9739f3f49"
+}
+],
+[
+{
+"name": "nl",
+"rrsig": {
+"algorithm": 8,
+"covered": 43,
+"expiration": 1793998800,
+"inception": 1792872000,
+"key_tag": 8763,
+"labels": 1,
+"original_ttl": 86400,
+"signature": "79c2ae495e82d4d18d26320f42f1b32f857650de57e3b8e2009b6b17e8588e61519e48035aedbba44a3a58271a86b1e5d4c3554d49ced9c6131e1ef99809772791f2d2e81bd43fc0be7084c83d6003dda9a77bf786b7c1c0dbadc0b4daeaf5a45a55c5558380b497e8f031bffddc6cd75250c5dddee9022051bc2b3ac175b6893a1a336f5e70c2054bb772ddf3adbfd5870f72d8c945ef5846d95c564ab9d40044ae3e90c26b8b9da0871e49c90af4df7f2b74ff5919e734873142534f18ee59a818e4714fc56012ee19f2b7beba4dd71277b154e8686f8bf9789fccc29780c4f239fe8d512616fc5f73cfcc66236ed9083a14fdc581a7c5436d51e329f1c3a1",
+"signer": ""
+},
+"ttl": 86399,
+"type": 46,
+"value": "DS 8 1 86400 1793998800 1792872000 8763 . ecKuSV6C1NGNJjIPQvGzL4V2UN5X47jiAJtrF+hYjmFRnkgDWu27pEo6WCcahrHl1MNVTUnO2cYTHh75mAl3J5Hy0ugb1D/AvnCEyD1gA92pp3v3hrfBwNutwLTa6vWkWlXFVYOAtJfo8DG//dxs11JQxd3e6QIgUbwrOsF1tok6GjNvXnDCBUu3ct3zrb/Vhw9y2MlF71hG2VxWSrnUAESuPpDCa4udoIceSckK9N9/K3T/WRnnNIcxQlNPGO5ZqBjkcU/FYBLuGfK3vrpN1xJ3sVToaG+L+XifzMKXgMTyOf6NUSYW/F9zz8xmI27ZCDoU/cWBp8VDbVHjKfHDoQ==",
+"wire": "002b0801000151806aee3fd06add0e40223b0079c2ae495e82d4d18d26320f42f1b32f857650de57e3b8e2009b6b17e8588e61519e48035aedbba44a3a58271a86b1e5d4c3554d49ced9c6131e1ef99809772791f2d2e81bd43fc0be7084c83d6003dda9a77bf786b7c1c0dbadc0b4daeaf5a45a55c5558380b497e8f031bffddc6cd75250c5dddee9022051bc2b3ac175b6893a1a336f5e70c2054bb772ddf3adbfd5870f72d8c945ef5846d95c564ab9d40044ae3e90c26b8b9da0871e49c90af4df7f2b74ff5919e734873142534f18ee59a818e4714fc56012ee19f2b7beba4dd71277b154e8686f8bf9789fccc29780c4f239fe8d512616fc5f73cfcc66236ed9083a14fdc581a7c5436d51e329f1c3a1"
+}
+]
+],
+"nl|48": [
+[
+{
+"name": "nl",
+"ttl": 3599,
+"type": 48,
+"value": "256 3 13 ObMZD0WbONw5/xzfY63W7kn4yVhtYwgu7pjE9L4TAMsaAEpDVhGmQ7fA373thjkjjZTdHuQYg33kmj8A3wqX7g==",
+"wire": "0100030d39b3190f459b38dc39ff1cdf63add6ee49f8c9586d63082eee98c4f4be1300cb1a004a435611a643b7c0dfbded8639238d94dd1ee418837de49a3f00df0a97ee"
+},
+{
+"name": "nl",
+"ttl": 3599,
+"type": 48,
+"value": "257 3 13 aeDdFmc/JLPyva7Y4bS2SFbfWmxaiSrnqwgs+D1PKSPSruxIRH+6gHLhJ4XYIzrSaT3uk6rsx3c5jV8U4B8O+g==",
+"wire": "0101030d69e0dd16673f24b3f2bdaed8e1b4b64856df5a6c5a892ae7ab082cf83d4f2923d2aeec48447fba8072e12785d8233ad2693dee93aaecc777398d5f14e01f0efa"
+}
+],
+[
+{
+"name": "nl",
+"rrsig": {
+"algorithm": 13,
+"covered": 48,
+"expiration": 1794489916,
+"inception": 1792100245,
+"key_tag": 17153,
+"labels": 1,
+"original_ttl": 3600,
+"signature": "37e2ee28f688c6e8c654fb612b327c0a75d62d8b136eb188b20b1049b30d1822e9c66f0b46c2d4280cfef49e1ac7806caf28471bbb2c6e861cbfad664b434801",
+"signer": "nl"
+},
+"ttl": 3599,
+"type": 46,
+"value": "DNSKEY 13 1 3600 1794489916 1792100245 17153 nl. N+LuKPaIxujGVPthKzJ8CnXWLYsTbrGIsgsQSbMNGCLpxm8LRsLUKAz+9J4ax4BsryhHG7ssboYcv61mS0NIAQ==",
+"wire": "00300d0100000e106af5be3c6ad147954301026e6c0037e2ee28f688c6e8c654fb612b327c0a75d62d8b136eb188b20b1049b30d1822e9c66f0b46c2d4280cfef49e1ac7806caf28471bbb2c6e861cbfad664b434801"
+}
+]
+],
+"org|43": [
+[
+{
+"name": "org",
+"ttl": 86399,
+"type": 43,
+"value": "26974 8 2 4FEDE294C53F438A158C41D39489CD78A86BEB0D8A0AEAFF14745C0D16E1DE32",
+"wire": "695e08024fede294c53f438a158c41d39489cd78a86beb0d8a0aeaff14745c0d16e1de32"
+}
+],
+[
+{
+"name": "org",
+"rrsig": {
+"algorithm": 8,
+"covered": 43,
+"expiration": 1793998800,
+"inception": 1792872000,
+"key_tag": 8763,
+"labels": 1,
+"original_ttl": 86400,
+"signature": "1d1dbbc355f2f4906d3d891158f2383720c7ccb666b33db81587ea5650b07aea0f4f290b82b560727027626c55e1b1c623349864df4f3d37a7e07fbf4eceb319913f55ca9eaeecb210d03a2fbac6a28ed547806c87134ef763459044cbfc6b47a20bbb4ff88326a6e98c3993185b77a7c9918f1f0fce8602b2a37c69540927cd6156dedd1e3517954d223efe03495e4f660c80ec4f99ef967bc42f6ddfd70803920e5568ca8e5b62258f3d54a8984ec26058346e210aa17124dc08e760a311cc80b02ff01d8279d5a4ee91c020b6186dac626aa6de226e9b3e47b75b584481b1a74742806e037c4d8a1022f243138435231c4fd0b55791ac1dcc6b4a97ee2fd5",
+"signer": ""
+},
+"ttl": 86399,
+"type": 46,
+"value": "DS 8 1 86400 1793998800 1792872000 8763 . HR27w1Xy9JBtPYkRWPI4NyDHzLZmsz24FYfqVlCweuoPTykLgrVgcnAnYmxV4bHGIzSYZN9PPTen4H+/Ts6zGZE/VcqeruyyENA6L7rGoo7VR4BshxNO92NFkETL/GtHogu7T/iDJqbpjDmTGFt3p8mRjx8PzoYCsqN8aVQJJ81hVt7dHjUXlU0iPv4DSV5PZgyA7E+Z75Z7xC9t39cIA5IOVWjKjltiJY89VKiYTsJgWDRuIQqhcSTcCOdgoxHMgLAv8B2CedWk7pHAILYYbaxiaqbeIm6bPke3W1hEgbGnR0KAbgN8TYoQIvJDE4Q1IxxP0LVXkawdzGtKl+4v1Q==",
+"wire": "002b0801000151806aee3fd06add0e40223b001d1dbbc355f2f4906d3d891158f2383720c7ccb666b33db81587ea5650b07aea0f4f290b82b560727027626c55e1b1c623349864df4f3d37a7e07fbf4eceb319913f55ca9eaeecb210d03a2fbac6a28ed547806c87134ef763459044cbfc6b47a20bbb4ff88326a6e98c3993185b77a7c9918f1f0fce8602b2a37c69540927cd6156dedd1e3517954d223efe03495e4f660c80ec4f99ef967bc42f6ddfd70803920e5568ca8e5b62258f3d54a8984ec26058346e210aa17124dc08e760a311cc80b02ff01d8279d5a4ee91c020b6186dac626aa6de226e9b3e47b75b584481b1a74742806e037c4d8a1022f243138435231c4fd0b55791ac1dcc6b4a97ee2fd5"
+}
+]
+],
+"org|48": [
+[
+{
+"name": "org",
+"ttl": 3599,
+"type": 48,
+"value": "256 3 8 AwEAAee4S2PCWpylWfP/Nc9VvG5qZMrXfuA8rAl0gOjuxv6jqmZk+mO0RDw/ONmMOIGDWQHp6dESj/3MoZXZt4V2eyLRgbSX5BAlDAShuhp6lGStcWRPes9egk9s84/ONCLwMp8CL3D5nyZcNn6g+ZQBrENsqyWEzw+kfwjE9lpGesEL",
+"wire": "0100030803010001e7b84b63c25a9ca559f3ff35cf55bc6e6a64cad77ee03cac097480e8eec6fea3aa6664fa63b4443c3f38d98c3881835901e9e9d1128ffdcca195d9b785767b22d181b497e410250c04a1ba1a7a9464ad71644f7acf5e824f6cf38fce3422f0329f022f70f99f265c367ea0f99401ac436cab2584cf0fa47f08c4f65a467ac10b"
+},
+{
+"name": "org",
+"ttl": 3599,
+"type": 48,
+"value": "257 3 8 AwEAAexZJ/1wfyNCxNPrTZizaG7UlibGhP+AyogR6bqjptKweEgE4gD8GxRQJkt+Fn5pCoNqzmm1ZnEoKqvm93uOYtbKkYQDGH+W69J66MSKpgIyS+mT/4iaXn+lpb5o99l/sf7lHMa975O/fqN6aPUll4hUbN2T1LHv6HzQuQCtNRJA8jHGwX5q0NMmh2Z+yaG6B9cISerje9l5L+ID2ydJ6zXquYteoIUvX2xzqnXCdHPSvD+oL6R/weW+tztdFS1hok/1z3tn5NzmcaOLll9nXniCozEpLFEGPswyvtphWgCYhI8bBTqhUsIwfIwLSBQTEg2oCX7sS5CbXg44OqwhIW8=",
+"wire": "0101030803010001ec5927fd707f2342c4d3eb4d98b3686ed49626c684ff80ca8811e9baa3a6d2b0784804e200fc1b1450264b7e167e690a836ace69b56671282aabe6f77b8e62d6ca918403187f96ebd27ae8c48aa602324be993ff889a5e7fa5a5be68f7d97fb1fee51cc6bdef93bf7ea37a68f5259788546cdd93d4b1efe87cd0b900ad351240f231c6c17e6ad0d32687667ec9a1ba07d70849eae37bd9792fe203db2749eb35eab98b5ea0852f5f6c73aa75c27473d2bc3fa82fa47fc1e5beb73b5d152d61a24ff5cf7b67e4dce671a38b965f675e7882a331292c51063ecc32beda615a0098848f1b053aa152c2307c8c0b481413120da8097eec4b909b5e0e383aac21216f"
+},
+{
+"name": "org",
+"ttl": 3599,
+"type": 48,
+"value": "256 3 8 AwEAAb9DfM5jwCx0XxAfjywbkNuRiTXfIjQzDEPnwhheRXxKOg/VVDB924kl7VL14VPlzPap2jb4Cc0G6k4VxUnUKIfLb3GtmREe/Y3Pbi6v+EkQHyznlNQ7EBCEEhlC5PMeMJmian3JsZ8+hMNwbyinHUXTrwPMdp+npv1FI2a8k815",
+"wire": "0100030803010001bf437cce63c02c745f101f8f2c1b90db918935df2234330c43e7c2185e457c4a3a0fd554307ddb8925ed52f5e153e5ccf6a9da36f809cd06ea4e15c549d42887cb6f71ad99111efd8dcf6e2eaff849101f2ce794d43b101084121942e4f31e3099a26a7dc9b19f3e84c3706f28a71d45d3af03cc769fa7a6fd452366bc93cd79"
+},
+{
+"name": "org",
+"ttl": 3599,
+"type": 48,
+"value": "256 3 8 AwEAAbGCRlMxb1wffcDpATrGNnTTj+HttrvOWlaSZJlX+PGUtlg1vB9NqeMPBh6ysAEtz2bng8MbWjfmEnKtAQ3u2961s2ZzPeBRfC5b8dAeqaOinX3xqxHd6Bg9LODThq8vcSpXngr9Nvyw3ZAezS/9CSKAMdjXRegf4iYini51Vjxf",
+"wire": "0100030803010001b1824653316f5c1f7dc0e9013ac63674d38fe1edb6bbce5a5692649957f8f194b65835bc1f4da9e30f061eb2b0012dcf66e783c31b5a37e61272ad010deedbdeb5b366733de0517c2e5bf1d01ea9a3a29d7df1ab11dde8183d2ce0d386af2f712a579e0afd36fcb0dd901ecd2ffd09228031d8d745e81fe226229e2e75563c5f"
+},
+{
+"name": "org",
+"ttl": 3599,
+"type": 48,
+"value": "257 3 8 AwEAAZz9f/tpl0utB33T6vZ6ReZ13c5OLWJIna/GqJFKYvw0JSCDLqf9zGXOOstWdzuEgpiubfPh3gMi2xMRIv8qMnk6Xio57uxLRcM6mNV4QWqH4eczCd/TGj+IsucFs4+FEPQ0LwcNR/X4xzkZZjwcfFPeZafHFbKB4Nc7aYHeTs8mbTXuYUcJIDNS2JlqlrDM1qAfVUxR0/GyE/is68igxwR0MswrBF1d2YMYGElmK5EktwPYzwCmptQBa/A+HMcp9FM4Xug/NoLZbffbGTLGnMw0PHZX//8h0Cho2p8GvGVzXARBOmzTkmdgxz2yRIQOOuL6MyQZKUv8/h+AZ5Xudbs=",
+"wire": "01010308030100019cfd7ffb69974bad077dd3eaf67a45e675ddce4e2d62489dafc6a8914a62fc342520832ea7fdcc65ce3acb56773b848298ae6df3e1de0322db131122ff2a32793a5e2a39eeec4b45c33a98d578416a87e1e73309dfd31a3f88b2e705b38f8510f4342f070d47f5f8c73919663c1c7c53de65a7c715b281e0d73b6981de4ecf266d35ee614709203352d8996a96b0ccd6a01f554c51d3f1b213f8acebc8a0c7047432cc2b045d5dd983181849662b9124b703d8cf00a6a6d4016bf03e1cc729f453385ee83f3682d96df7db1932c69ccc343c7657ffff21d02868da9f06bc65735c04413a6cd3926760c73db244840e3ae2fa332419294bfcfe1f806795ee75bb"
+}
+],
+[
+{
+"name": "org",
+"rrsig": {
+"algorithm": 8,
+"covered": 48,
+"expiration": 1794065336,
+"inception": 1792247336,
+"key_tag": 26974,
+"labels": 1,
+"original_ttl": 3600,
+"signature": "3d2b98c4ee9159c6f4c82bd2536162aa8367e73d31f9303f6593dc620d9c2d381b4c0624460303b3261551f6f23abaebd087982b3ddd3ba24128670c097cb3b9f7ffa7edae9591716e32c44e0dd0a7e3c55460f8a9d10c2031ad0c882c00d3af0746a513e766eafb8b8d76015c0d3b8a3a1ba163e4cb24cd9ba49d13ac7473879a8f3cf0a4db8826ea4eb02b87fe50a120384b6fc2f7fe44c8c09740f77d65b45233da8c28eba4bedab2a3e2006e48d6e408412444f950106417b18be08267a6ac58d23b9f64555d0efa2d22186e039a19839dd9cfa7ebcf6167fa369c30f0ca8b4103f374e685944a61afd484bc02fa7b9c70db0e7e14d54a1d86f5aee64c04",
+"signer": "org"
+},
+"ttl": 3599,
+"type": 46,
+"value": "DNSKEY 8 1 3600 1794065336 1792247336 26974 org. PSuYxO6RWcb0yCvSU2FiqoNn5z0x+TA/ZZPcYg2cLTgbTAYkRgMDsyYVUfbyOrrr0IeYKz3dO6JBKGcMCXyzuff/p+2ulZFxbjLETg3Qp+PFVGD4qdEMIDGtDIgsANOvB0alE+dm6vuLjXYBXA07ijoboWPkyyTNm6SdE6x0c4eajzzwpNuIJupOsCuH/lChIDhLb8L3/kTIwJdA931ltFIz2owo66S+2rKj4gBuSNbkCEEkRPlQEGQXsYvggmemrFjSO59kVV0O+i0iGG4DmhmDndnPp+vPYWf6Npww8MqLQQPzdOaFlEphr9SEvAL6e5xw2w5+FNVKHYb1ruZMBA==",
+"wire": "0030080100000e106aef43b86ad38628695e036f7267003d2b98c4ee9159c6f4c82bd2536162aa8367e73d31f9303f6593dc620d9c2d381b4c0624460303b3261551f6f23abaebd087982b3ddd3ba24128670c097cb3b9f7ffa7edae9591716e32c44e0dd0a7e3c55460f8a9d10c2031ad0c882c00d3af0746a513e766eafb8b8d76015c0d3b8a3a1ba163e4cb24cd9ba49d13ac7473879a8f3cf0a4db8826ea4eb02b87fe50a120384b6fc2f7fe44c8c09740f77d65b45233da8c28eba4bedab2a3e2006e48d6e408412444f950106417b18be08267a6ac58d23b9f64555d0efa2d22186e039a19839dd9cfa7ebcf6167fa369c30f0ca8b4103f374e685944a61afd484bc02fa7b9c70db0e7e14d54a1d86f5aee64c04"
+}
+]
+],
+"sidn.nl|1": [
+[
+{
+"name": "sidn.nl",
+"ttl": 3599,
+"type": 1,
+"value": "34.111.90.63",
+"wire": "226f5a3f"
+}
+],
+[
+{
+"name": "sidn.nl",
+"rrsig": {
+"algorithm": 13,
+"covered": 1,
+"expiration": 1793836800,
+"inception": 1792022400,
+"key_tag": 30794,
+"labels": 2,
+"original_ttl": 3600,
+"signature": "94e17d020be069132ef664bb57fa70083b8e45890d9dc88df6e0779135db956b8f9b73873e13cc02c90814ba78e3b461f31a6390642579fcf0c6d5b8420b3d1a",
+"signer": "sidn.nl"
+},
+"ttl": 3599,
+"type": 46,
+"value": "A 13 2 3600 1793836800 1792022400 30794 sidn.nl. lOF9AgvgaRMu9mS7V/pwCDuORYkNnciN9uB3kTXblWuPm3OHPhPMAskIFLp447Rh8xpjkGQlefzwxtW4Qgs9Gg==",
+"wire": "00010d0200000e106aebc7006ad01780784a047369646e026e6c0094e17d020be069132ef664bb57fa70083b8e45890d9dc88df6e0779135db956b8f9b73873e13cc02c90814ba78e3b461f31a6390642579fcf0c6d5b8420b3d1a"
+}
+]
+],
+"sidn.nl|43": [
+[
+{
+"name": "sidn.nl",
+"ttl": 3600,
+"type": 43,
+"value": "62949 13 2 FBF66B8D019C1EEC2779B7DBFBFF090CA0F3704DCBD8D76AA80974186F110E91",
+"wire": "f5e50d02fbf66b8d019c1eec2779b7dbfbff090ca0f3704dcbd8d76aa80974186f110e91"
+}
+],
+[
+{
+"name": "sidn.nl",
+"rrsig": {
+"algorithm": 13,
+"covered": 43,
+"expiration": 1794623836,
+"inception": 1792217246,
+"key_tag": 60847,
+"labels": 2,
+"original_ttl": 3600,
+"signature": "d68c6a8f89477458c9583bcc41714c57dd016f2997714ac27539b1f31a52586a46a26cf71c577ab492fc04f35eb65245c4b6ece65c947b2bed1ffacd4729c436",
+"signer": "nl"
+},
+"ttl": 3600,
+"type": 46,
+"value": "DS 13 2 3600 1794623836 1792217246 60847 nl. 1oxqj4lHdFjJWDvMQXFMV90BbymXcUrCdTmx8xpSWGpGomz3HFd6tJL8BPNetlJFxLbs5lyUeyvtH/rNRynENg==",
+"wire": "002b0d0200000e106af7c95c6ad3109eedaf026e6c00d68c6a8f89477458c9583bcc41714c57dd016f2997714ac27539b1f31a52586a46a26cf71c577ab492fc04f35eb65245c4b6ece65c947b2bed1ffacd4729c436"
+}
+]
+],
+"sidn.nl|48": [
+[
+{
+"name": "sidn.nl",
+"ttl": 300,
+"type": 48,
+"value": "256 3 13 1WutjHCfbCeywwKSKsMl0vQA5fufsVYXRpPCw54skU9iCJQrbwsCH53g71HsBn1TwGLfJbF53oordPG/Z7Hzmw==",
+"wire": "0100030dd56bad8c709f6c27b2c302922ac325d2f400e5fb9fb156174693c2c39e2c914f6208942b6f0b021f9de0ef51ec067d53c062df25b179de8a2b74f1bf67b1f39b"
+},
+{
+"name": "sidn.nl",
+"ttl": 300,
+"type": 48,
+"value": "257 3 13 jh1pVS3yzgJk4lM9fEtwS5V+nbISmn8AmGZAdY0T1o4351IQEBd/v518tl00YmQL5Mq26YLE8RGKIOCXAYzWiQ==",
+"wire": "0101030d8e1d69552df2ce0264e2533d7c4b704b957e9db2129a7f00986640758d13d68e37e7521010177fbf9d7cb65d3462640be4cab6e982c4f1118a20e097018cd689"
+}
+],
+[
+{
+"name": "sidn.nl",
+"rrsig": {
+"algorithm": 13,
+"covered": 48,
+"expiration": 1793836800,
+"inception": 1792022400,
+"key_tag": 62949,
+"labels": 2,
+"original_ttl": 300,
+"signature": "8c1e1a04421c855d93b9ae1ffc42bd61cbbecc24768c6a8be776091535e97145467f1c707f00a3eedd262d8c1fa0d51b1d34dd04264c0e90a3a87c049bc67e81",
+"signer": "sidn.nl"
+},
+"ttl": 300,
+"type": 46,
+"value": "DNSKEY 13 2 300 1793836800 1792022400 62949 sidn.nl. jB4aBEIchV2Tua4f/EK9Ycu+zCR2jGqL53YJFTXpcUVGfxxwfwCj7t0mLYwfoNUbHTTdBCZMDpCjqHwEm8Z+gQ==",
+"wire": "00300d020000012c6aebc7006ad01780f5e5047369646e026e6c008c1e1a04421c855d93b9ae1ffc42bd61cbbecc24768c6a8be776091535e97145467f1c707f00a3eedd262d8c1fa0d51b1d34dd04264c0e90a3a87c049bc67e81"
+}
+]
+],
+"www.ietf.org|1": [
+[
+{
+"name": "www.ietf.org",
+"ttl": 300,
+"type": 1,
+"value": "104.16.44.99",
+"wire": "68102c63"
+},
+{
+"name": "www.ietf.org",
+"ttl": 300,
+"type": 1,
+"value": "104.16.45.99",
+"wire": "68102d63"
+}
+],
+[
+{
+"name": "www.ietf.org",
+"rrsig": {
+"algorithm": 13,
+"covered": 1,
+"expiration": 1792976672,
+"inception": 1792796672,
+"key_tag": 34505,
+"labels": 3,
+"original_ttl": 300,
+"signature": "5c0dc5a25ed12784bc50c3cbde80ba199df0fcaf1eb4d64bfa7c4f311b4f8a87c0031487377f46b1f86243370037ffdc2fec347719b459d928680c8ac30d41c1",
+"signer": "ietf.org"
+},
+"ttl": 300,
+"type": 46,
+"value": "A 13 3 300 1792976672 1792796672 34505 ietf.org. XA3Fol7RJ4S8UMPL3oC6GZ3w/K8etNZL+nxPMRtPiofAAxSHN39GsfhiQzcAN//cL+w0dxm0WdkoaAyKww1BwQ==",
+"wire": "00010d030000012c6adea7206adbe80086c90469657466036f7267005c0dc5a25ed12784bc50c3cbde80ba199df0fcaf1eb4d64bfa7c4f311b4f8a87c0031487377f46b1f86243370037ffdc2fec347719b459d928680c8ac30d41c1"
+}
+]
+],
+"www.sidn.nl|1": [
+[
+{
+"name": "sidn.nl",
+"ttl": 3600,
+"type": 1,
+"value": "34.111.90.63",
+"wire": "226f5a3f"
+}
+],
+[
+{
+"name": "sidn.nl",
+"rrsig": {
+"algorithm": 13,
+"covered": 1,
+"expiration": 1793836800,
+"inception": 1792022400,
+"key_tag": 30794,
+"labels": 2,
+"original_ttl": 3600,
+"signature": "94e17d020be069132ef664bb57fa70083b8e45890d9dc88df6e0779135db956b8f9b73873e13cc02c90814ba78e3b461f31a6390642579fcf0c6d5b8420b3d1a",
+"signer": "sidn.nl"
+},
+"ttl": 3600,
+"type": 46,
+"value": "A 13 2 3600 1793836800 1792022400 30794 sidn.nl. lOF9AgvgaRMu9mS7V/pwCDuORYkNnciN9uB3kTXblWuPm3OHPhPMAskIFLp447Rh8xpjkGQlefzwxtW4Qgs9Gg==",
+"wire": "00010d0200000e106aebc7006ad01780784a047369646e026e6c0094e17d020be069132ef664bb57fa70083b8e45890d9dc88df6e0779135db956b8f9b73873e13cc02c90814ba78e3b461f31a6390642579fcf0c6d5b8420b3d1a"
+}
+]
+],
+"www.sidn.nl|5": [
+[
+{
+"name": "www.sidn.nl",
+"ttl": 3600,
+"type": 5,
+"value": "sidn.nl",
+"wire": "047369646e026e6c00"
+}
+],
+[
+{
+"name": "www.sidn.nl",
+"rrsig": {
+"algorithm": 13,
+"covered": 5,
+"expiration": 1793836800,
+"inception": 1792022400,
+"key_tag": 30794,
+"labels": 3,
+"original_ttl": 3600,
+"signature": "9a85285337b260043e90affed90871a46da396c73d43c43cc23e514d64a48198e31451fe5458911d1deec3f8e10409cd9da84a59ca036abfe5cb6d1b411fe1b4",
+"signer": "sidn.nl"
+},
+"ttl": 3600,
+"type": 46,
+"value": "CNAME 13 3 3600 1793836800 1792022400 30794 sidn.nl. moUoUzeyYAQ+kK/+2QhxpG2jlsc9Q8Q8wj5RTWSkgZjjFFH+VFiRHR3uw/jhBAnNnahKWcoDar/ly20bQR/htA==",
+"wire": "00050d0300000e106aebc7006ad01780784a047369646e026e6c009a85285337b260043e90affed90871a46da396c73d43c43cc23e514d64a48198e31451fe5458911d1deec3f8e10409cd9da84a59ca036abfe5cb6d1b411fe1b4"
+}
+]
+],
+"|48": [
+[
+{
+"name": "",
+"ttl": 172798,
+"type": 48,
+"value": "256 3 8 AwEAAcorNxNc9t0ue1ZenPjVMRujlQ2YLBJ0pR/4XMjHby9vr03cRxFSKnWpxeg5PL384D9VeqdS1bjrGyTsHtoagzI3NiXFd8sjHMOnZxu5pp/+UBIg7tasYgVMMdUiM1Yu/c+t30d1Qw/v6NYLNnOnywTu6HuUh7Y1sZRq/GZcrxLENXHQoyKpOrOr8R3+qd6wK69IKB80ZBZtkX9rdEqKJk+yYXjEZzZ0zkAFthmNgCreAoU9PVlU66dyOsaLjf3wKUlUm9SNOKs+tK6LuSmRbK6+1T/tPaRaMBSEuv2G6vXfnJ1uyMbGvtpRn/YDcvTjrp6DzE6XyF44QdwJ3oKx4ek=",
+"wire": "0100030803010001ca2b37135cf6dd2e7b565e9cf8d5311ba3950d982c1274a51ff85cc8c76f2f6faf4ddc4711522a75a9c5e8393cbdfce03f557aa752d5b8eb1b24ec1eda1a8332373625c577cb231cc3a7671bb9a69ffe501220eed6ac62054c31d52233562efdcfaddf4775430fefe8d60b3673a7cb04eee87b9487b635b1946afc665caf12c43571d0a322a93ab3abf11dfea9deb02baf48281f3464166d917f6b744a8a264fb26178c4673674ce4005b6198d802ade02853d3d5954eba7723ac68b8dfdf02949549bd48d38ab3eb4ae8bb929916caebed53fed3da45a301484bafd86eaf5df9c9d6ec8c6c6beda519ff60372f4e3ae9e83cc4e97c85e3841dc09de82b1e1e9"
+},
+{
+"name": "",
+"ttl": 172798,
+"type": 48,
+"value": "257 3 8 AwEAAaz/tAm8yTn4Mfeh5eyI96WSVexTBAvkMgJzkKTOiW1vkIbzxeF3+/4RgWOq7HrxRixHlFlExOLAJr5emLvN7SWXgnLh4+B5xQlNVz8Og8kvArMtNROxVQuCaSnIDdD5LKyWbRd2n9WGe2R8PzgCmr3EgVLrjyBxWezF0jLHwVN8efS3rCj/EWgvIWgb9tarpVUDK/b58Da+sqqls3eNbuv7pr+eoZG+SrDK6nWeL3c6H5Apxz7LjVc1uTIdsIXxuOLYA4/ilBmSVIzuDWfdRUfhHdY6+cn8HFRm+2hM8AnXGXws9555KrUB5qihylGa8subX2Nn6UwNR1AkUTV74bU=",
+"wire": "0101030803010001acffb409bcc939f831f7a1e5ec88f7a59255ec53040be432027390a4ce896d6f9086f3c5e177fbfe118163aaec7af1462c47945944c4e2c026be5e98bbcded25978272e1e3e079c5094d573f0e83c92f02b32d3513b1550b826929c80dd0f92cac966d17769fd5867b647c3f38029abdc48152eb8f207159ecc5d232c7c1537c79f4b7ac28ff11682f21681bf6d6aba555032bf6f9f036beb2aaa5b3778d6eebfba6bf9ea191be4ab0caea759e2f773a1f9029c73ecb8d5735b9321db085f1b8e2d8038fe2941992548cee0d67dd4547e11dd63af9c9fc1c5466fb684cf009d7197c2cf79e792ab501e6a8a1ca519af2cb9b5f6367e94c0d47502451357be1b5"
+},
+{
+"name": "",
+"ttl": 172798,
+"type": 48,
+"value": "257 3 8 AwEAAa96jeuknZlaeSrvyAJj6ZHv28hhOKkx3rLGXVaC6rXTsDc449/cidltpkyGwCJNnOAlFNKF2jBosZBU5eeHspaQWOmOElZsjICMQMC3aeHbGiShvZsx4wMYSjH8e7Vrhbu6irwCzVBApESjbUdpWWmEnhathWu1jo+siFUiRAAxm9qyJNg/wOZqqzL/dL/q8PkcRU5oUKEpUge71M3ej2/7CPqpdVwuMoTvoB+ZOT4YeGyxMvHmbrxlFzGOHOijtzN+u1TQNatX2XBuzZNQ1K+s2CXkPIZo7s6JgZyvaBevYtxPvYLw4z9mR7K2vaF18UYH9Z9GNUUeayffKC73PYc=",
+"wire": "0101030803010001af7a8deba49d995a792aefc80263e991efdbc86138a931deb2c65d5682eab5d3b03738e3dfdc89d96da64c86c0224d9ce02514d285da3068b19054e5e787b2969058e98e12566c8c808c40c0b769e1db1a24a1bd9b31e303184a31fc7bb56b85bbba8abc02cd5040a444a36d47695969849e16ad856bb58e8fac8855224400319bdab224d83fc0e66aab32ff74bfeaf0f91c454e6850a1295207bbd4cdde8f6ffb08faa9755c2e3284efa01f99393e18786cb132f1e66ebc6517318e1ce8a3b7337ebb54d035ab57d9706ecd9350d4afacd825e43c8668eece89819caf6817af62dc4fbd82f0e33f6647b2b6bda175f14607f59f4635451e6b27df282ef73d87"
+}
+],
+[
+{
+"name": "",
+"rrsig": {
+"algorithm": 8,
+"covered": 48,
+"expiration": 1794355200,
+"inception": 1792540800,
+"key_tag": 38696,
+"labels": 0,
+"original_ttl": 172800,
+"signature": "547605590cf1bdf202c84300c030aa3490a80127b18bd45426a5cb73caec684a57e31d89d98920c49ccc1cdd47b175e69cb0bb7aa6dd111296239c26fcace81610f36381784d907dd6dccdde04c37439485af262d86794c5f5a3e4c2bf15a951a04f505fc10c8e45493e3a9bc68789ef2a20ed8cbedf3e6fa387be39ea9c3c79e2c9cf74f9cc68e9f13a9cb785210c62712ac404b90f317ee30368a95f29d5c497a9413fd0933a2cec72f4375c5e1d1df3de77de1f627214acfd9a873a7d26f8c748037fd71b9c5349e6f6c8b6dbb108431c0b8a166bf1cd1cf61e60728a68b274e34426690181246e7d5fbeeed3e1739ec3f11cb39d5234d0f406f852f4d820",
+"signer": ""
+},
+"ttl": 172798,
+"type": 46,
+"value": "DNSKEY 8 0 172800 1794355200 1792540800 38696 . VHYFWQzxvfICyEMAwDCqNJCoASexi9RUJqXLc8rsaEpX4x2J2YkgxJzMHN1HsXXmnLC7eqbdERKWI5wm/KzoFhDzY4F4TZB91tzN3gTDdDlIWvJi2GeUxfWj5MK/FalRoE9QX8EMjkVJPjqbxoeJ7yog7Yy+3z5vo4e+OeqcPHniyc90+cxo6fE6nLeFIQxicSrEBLkPMX7jA2ipXynVxJepQT/Qkzos7HL0N1xeHR3z3nfeH2JyFKz9moc6fSb4x0gDf9cbnFNJ5vbIttuxCEMcC4oWa/HNHPYeYHKKaLJ040QmaQGBJG59X77u0+FznsPxHLOdUjTQ9Ab4UvTYIA==",
+"wire": "003008000002a3006af3b0006ad80080972800547605590cf1bdf202c84300c030aa3490a80127b18bd45426a5cb73caec684a57e31d89d98920c49ccc1cdd47b175e69cb0bb7aa6dd111296239c26fcace81610f36381784d907dd6dccdde04c37439485af262d86794c5f5a3e4c2bf15a951a04f505fc10c8e45493e3a9bc68789ef2a20ed8cbedf3e6fa387be39ea9c3c79e2c9cf74f9cc68e9f13a9cb785210c62712ac404b90f317ee30368a95f29d5c497a9413fd0933a2cec72f4375c5e1d1df3de77de1f627214acfd9a873a7d26f8c748037fd71b9c5349e6f6c8b6dbb108431c0b8a166bf1cd1cf61e60728a68b274e34426690181246e7d5fbeeed3e1739ec3f11cb39d5234d0f406f852f4d820"
+}
+]
+]
+},
+"now": 1792886672
+}

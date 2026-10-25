@@ -12,8 +12,8 @@ import time
 ROOTS = {"a": "198.41.0.4", "b": "170.247.170.2", "c": "192.33.4.12", "d": "199.7.91.13", "e": "192.203.230.10",
          "f": "192.5.5.241", "g": "192.112.36.4", "h": "198.97.190.53", "i": "192.36.148.17", "j": "192.58.128.30",
          "k": "193.0.14.129", "l": "199.7.83.42", "m": "202.12.27.33"}
-A, NS, CNAME, SOA, PTR, MX, TXT, AAAA, SRV, OPT, DS, DNSKEY, CAA = 1, 2, 5, 6, 12, 15, 16, 28, 33, 41, 43, 48, 257
-TYPE_NAMES = {A: "A", NS: "NS", CNAME: "CNAME", AAAA: "AAAA", SOA: "SOA", PTR: "PTR", MX: "MX", TXT: "TXT", SRV: "SRV", DS: "DS", DNSKEY: "DNSKEY", CAA: "CAA"}
+A, NS, CNAME, SOA, PTR, MX, TXT, AAAA, SRV, OPT, DS, RRSIG, DNSKEY, CAA = 1, 2, 5, 6, 12, 15, 16, 28, 33, 41, 43, 46, 48, 257
+TYPE_NAMES = {A: "A", NS: "NS", CNAME: "CNAME", AAAA: "AAAA", SOA: "SOA", PTR: "PTR", MX: "MX", TXT: "TXT", SRV: "SRV", DS: "DS", RRSIG: "RRSIG", DNSKEY: "DNSKEY", CAA: "CAA"}
 FORMERR = 1
 # The UDP reply size EDNS asks for: DNS Flag Day 2020's figure, small enough never to fragment.
 EDNS_SIZE = 1232
@@ -21,6 +21,8 @@ EDNS_SIZE = 1232
 # below the root. The root never expires. Answers are kept the same way, until their TTL is up.
 known = {"": (math.inf, list(ROOTS.values()))}
 answers = {}
+# RFC 4035's DO bit: set, servers send the RRSIG records that sign each answer. dnssec.py sets it.
+DNSSEC_OK = False
 # Names a server said do not exist, name -> expiry. A missing name is missing for every type.
 missing = {}
 clock = time.monotonic  # a test swaps this to jump forward without waiting
@@ -38,10 +40,15 @@ class Unreachable(LookupError):
 def build_query(name, qtype=A, edns=True):
     # id, flags (no RD: we recurse), 1 question, and with EDNS one extra record
     header = struct.pack("!HHHHHH", random.randrange(65536), 0, 1, 0, 0, 1 if edns else 0)
-    qname = b"".join(bytes([len(label)]) + label.encode() for label in name.rstrip(".").split(".")) + b"\0"
+    qname = name_wire(name)  # the root is the empty name: one zero byte, nothing before it
     # The OPT pseudo-record: no name, and its class field is the UDP size we can take.
-    opt = b"\0" + struct.pack("!HHIH", OPT, EDNS_SIZE, 0, 0) if edns else b""
+    opt = b"\0" + struct.pack("!HHIH", OPT, EDNS_SIZE, 0x8000 if DNSSEC_OK else 0, 0) if edns else b""
     return header + qname + struct.pack("!HH", qtype, 1) + opt
+
+
+def name_wire(name):
+    # A name as uncompressed lower-case labels, the canonical form signatures are made over.
+    return b"".join(bytes([len(label)]) + label.lower().encode() for label in name.split(".") if label) + b"\0"
 
 
 def read_name(data, pos):
@@ -65,11 +72,12 @@ def read_record(data, pos):
     name, pos = read_name(data, pos)
     rtype, rclass, ttl, rdlen = struct.unpack("!HHIH", data[pos:pos + 10])
     pos += 10
-    rdata = data[pos:pos + rdlen]
-    if rtype in (NS, CNAME, PTR): value = read_name(data, pos)[0]
+    rdata = wire = data[pos:pos + rdlen]
+    # wire is the record data in canonical form (RFC 4034 section 6.2): any names in it spelled out.
+    if rtype in (NS, CNAME, PTR): value = read_name(data, pos)[0]; wire = name_wire(value)
     elif rtype == A: value = ".".join(str(b) for b in rdata)
     elif rtype == AAAA: value = socket.inet_ntop(socket.AF_INET6, rdata)
-    elif rtype == MX: value = f"{struct.unpack('!H', rdata[:2])[0]} {read_name(data, pos + 2)[0]}"
+    elif rtype == MX: value = f"{struct.unpack('!H', rdata[:2])[0]} {read_name(data, pos + 2)[0]}"; wire = rdata[:2] + name_wire(value.split()[1])
     # SRV (RFC 2782): priority, weight and port, then the host the service runs on.
     # CAA (RFC 8659): a flags byte, a tag such as issue, then which certificate authority it names.
     elif rtype == CAA: value = f'{rdata[0]} {rdata[2:2 + rdata[1]].decode("ascii", "replace")} "{rdata[2 + rdata[1]:].decode("utf-8", "replace")}"'
@@ -77,7 +85,7 @@ def read_record(data, pos):
     # the parent's fingerprint of a child's key: its tag, algorithm, digest type and digest.
     elif rtype == DNSKEY: value = "{} {} {} ".format(*struct.unpack("!HBB", rdata[:4])) + base64.b64encode(rdata[4:]).decode()
     elif rtype == DS: value = "{} {} {} ".format(*struct.unpack("!HBB", rdata[:4])) + rdata[4:].hex().upper()
-    elif rtype == SRV: value = "{} {} {} ".format(*struct.unpack("!HHH", rdata[:6])) + read_name(data, pos + 6)[0]
+    elif rtype == SRV: value = "{} {} {} ".format(*struct.unpack("!HHH", rdata[:6])) + read_name(data, pos + 6)[0]; wire = rdata[:6] + name_wire(value.split()[3])
     elif rtype == TXT: value = " ".join(repr(rdata[i + 1:i + 1 + rdata[i]].decode("utf-8", "replace")) for i in _txt_offsets(rdata))
     elif rtype == SOA:
         # Two names, then five numbers; the last says how long a "does not exist" may be kept.
@@ -85,9 +93,18 @@ def read_record(data, pos):
         mailbox, at = read_name(data, at)
         serial, refresh, retry, expire, minimum = struct.unpack("!IIIII", data[at:at + 20])
         value = f"{primary} {mailbox} {serial} {refresh} {retry} {expire} {minimum}"
-        return {"name": name, "type": rtype, "ttl": ttl, "value": value, "minimum": minimum}, pos + rdlen
+        wire = name_wire(primary) + name_wire(mailbox) + data[at:at + 20]
+        return {"name": name, "type": rtype, "ttl": ttl, "value": value, "minimum": minimum, "wire": wire}, pos + rdlen
+    elif rtype == RRSIG:
+        # A signature over one type of record at this name: who signed, with which key, valid when.
+        covered, alg, labels, original_ttl, expiration, inception, key_tag = struct.unpack("!HBBIIIH", rdata[:18])
+        signer, at = read_name(data, pos + 18)
+        sig = dict(covered=covered, algorithm=alg, labels=labels, original_ttl=original_ttl, expiration=expiration,
+                   inception=inception, key_tag=key_tag, signer=signer.lower(), signature=data[at:pos + rdlen])
+        value = f"{TYPE_NAMES.get(covered, covered)} {alg} {labels} {original_ttl} {expiration} {inception} {key_tag} {signer}. " + base64.b64encode(sig["signature"]).decode()
+        return {"name": name, "type": rtype, "ttl": ttl, "value": value, "rrsig": sig, "wire": rdata}, pos + rdlen
     else: value = rdata
-    return {"name": name, "type": rtype, "ttl": ttl, "value": value}, pos + rdlen
+    return {"name": name, "type": rtype, "ttl": ttl, "value": value, "wire": wire}, pos + rdlen
 
 
 def _txt_offsets(rdata):
@@ -214,7 +231,8 @@ def resolve_fresh(name, qtype=A, verbose=False, depth=0, aliases=()):
         return [dict(r, ttl=int(expires - now)) for r in records]
     # Start from the closest zone still in date: "" (the root) at worst.
     live = [z for z, (expires, _) in known.items() if expires > now]
-    zone = next(z for z in sorted(live, key=len, reverse=True) if under(name, z))
+    # A DS record lives in the parent zone, so its question must never start at the zone itself.
+    zone = next(z for z in sorted(live, key=len, reverse=True) if under(name, z) and not (qtype == DS and z == name))
     servers = known[zone][1]
     extra = 1
     while True:
@@ -241,7 +259,8 @@ def resolve_fresh(name, qtype=A, verbose=False, depth=0, aliases=()):
         # Only records about the name asked are believed; anything else in the reply could be planted.
         about = [r for r in reply["answers"] if r["name"].lower() == name]
         wanted = [r for r in about if r["type"] == qtype]
-        if wanted: return remember_answer(key, wanted)
+        # With the DO bit set, the signatures over the answer come back alongside it.
+        if wanted: return remember_answer(key, wanted + [r for r in about if r["type"] == RRSIG and r["rrsig"]["covered"] == qtype])
         cname = next((r for r in about if r["type"] == CNAME), None)
         if cname:
             if verbose: print(f"  {name} is an alias for {cname['value']}")
@@ -263,12 +282,27 @@ def resolve_fresh(name, qtype=A, verbose=False, depth=0, aliases=()):
 
 if __name__ == "__main__":
     args = [a for a in sys.argv[1:] if not a.startswith("-")]
-    if not args: sys.exit("usage: python resolve.py NAME [A|AAAA|NS|MX|TXT|SRV|PTR|CAA|DS|DNSKEY] [-v], or -x ADDRESS")
+    if not args: sys.exit("usage: python resolve.py NAME [A|AAAA|NS|MX|TXT|SRV|PTR|CAA|DS|DNSKEY] [-v] [--dnssec], or -x ADDRESS")
     qtype = {v: k for k, v in TYPE_NAMES.items()}.get(args[1].upper() if len(args) > 1 else "A", A)
     if "-x" in sys.argv:
         # A reverse lookup is a PTR question about the address written backwards under in-addr.arpa or ip6.arpa.
         try: args[0], qtype = ipaddress.ip_address(args[0]).reverse_pointer, PTR
         except ValueError: sys.exit(f"resolve: {args[0]} is not an IPv4 or IPv6 address")
+    if "--dnssec" in sys.argv:
+        # The answer only if its signatures chain up to the root's key; the chain is printed below it.
+        import dnssec
+        try:
+            records, chain = dnssec.validate(args[0], qtype)
+        except dnssec.Insecure as e:
+            sys.exit(f"resolve: insecure: {e}")
+        except dnssec.Bogus as e:
+            sys.exit(f"resolve: BOGUS, not using the answer: {e}")
+        except (LookupError, RuntimeError, socket.timeout) as e:
+            sys.exit(f"resolve: {e}")
+        for r in records:
+            print(f"{r['name']}\t{r['ttl']}\t{TYPE_NAMES.get(r['type'], r['type'])}\t{r['value']}")
+        print("; secure: " + "\n;   ".join(chain))
+        sys.exit()
     try:
         for r in resolve(args[0], qtype, verbose="-v" in sys.argv):
             print(f"{r['name']}\t{r['ttl']}\t{TYPE_NAMES.get(r['type'], r['type'])}\t{r['value']}")
