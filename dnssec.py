@@ -1,5 +1,6 @@
 # DNSSEC validation: an answer is believed only if its signature chains up to the root zone's key.
 # Run: python resolve.py cloudflare.com --dnssec. DOCS.md, "Checking the signatures", has the steps.
+import base64
 import hashlib
 import struct
 import time
@@ -196,9 +197,61 @@ def lookup(name, qtype):
     resolve.DNSSEC_OK = True
     try:
         records = resolve.resolve(name, qtype)
+    except resolve.NoData as e:
+        records = e.authority  # no answer, but the proof that there is none, and its signatures
     except LookupError:
         return [], []
     return [r for r in records if r["type"] != resolve.RRSIG], [r for r in records if r["type"] == resolve.RRSIG]
+
+
+def nsec3_hash(name, salt, iterations):
+    # RFC 5155 section 5: SHA-1 of the canonical name and the salt, then again of that, iterations times.
+    digest = hashlib.sha1(resolve.name_wire(name) + salt).digest()
+    for _ in range(iterations):
+        digest = hashlib.sha1(digest + salt).digest()
+    return digest
+
+
+def proves_no_ds(zone, parent, proof, sigs, keys, now):
+    # Whether signed NSEC or NSEC3 records from parent show zone is a delegation with no DS.
+    # Returns how, or None. Every record used must carry parent's valid signature.
+    def checked(r):
+        verify([r], [s for s in sigs if s["rrsig"]["covered"] == r["type"] and s["name"].lower() == r["name"].lower()], keys, parent, now)
+        return r
+    delegation = lambda types: resolve.NS in types and resolve.DS not in types and resolve.SOA not in types
+    for r in proof:
+        if r["type"] == resolve.NSEC and r["name"].lower() == zone:
+            return "NSEC" if delegation(checked(r)["value"]["types"]) else None
+    nsec3 = [r for r in proof if r["type"] == resolve.NSEC3 and r["name"].lower().partition(".")[2] == parent]
+    if not nsec3:
+        return None
+    alg, salt, iterations = nsec3[0]["value"]["algorithm"], nsec3[0]["value"]["salt"], nsec3[0]["value"]["iterations"]
+    if alg != 1 or iterations > 150 or any((r["value"]["salt"], r["value"]["iterations"]) != (salt, iterations) for r in nsec3):
+        raise Insecure(f"{parent}'s NSEC3 uses parameters this does not check (algorithm {alg}, {iterations} iterations)")
+    owners = {}
+    for r in nsec3:
+        try:
+            owners[base64.b32hexdecode(r["name"].partition(".")[0].upper())] = r
+        except ValueError:
+            pass
+    exact = owners.get(nsec3_hash(zone, salt, iterations))
+    if exact:
+        return "NSEC3" if delegation(checked(exact)["value"]["types"]) else None
+    # Opt-out (5155 section 7.2.4): an NSEC3 matches the closest name above zone that exists, and
+    # one flagged opt-out covers the hash of the name one label below it, so unsigned children are skipped.
+    labels = zone.split(".")
+    for i in range(1, len(labels) - len(parent.split(".")) + 2 if parent else len(labels) + 1):
+        encloser, closer = ".".join(labels[i:]), ".".join(labels[i - 1:])
+        if nsec3_hash(encloser, salt, iterations) in owners:
+            target = nsec3_hash(closer, salt, iterations)
+            for owner, r in owners.items():
+                after = r["value"]["next"]
+                if r["value"]["flags"] & 1 and (owner < target < after if owner < after else (target > owner or target < after)):
+                    checked(owners[nsec3_hash(encloser, salt, iterations)])
+                    checked(r)
+                    return "NSEC3 opt-out"
+            return None
+    return None
 
 
 def zone_keys(zone, fetch, now, chain, seen):
@@ -215,15 +268,19 @@ def zone_keys(zone, fetch, now, chain, seen):
         if not trusted:
             raise Bogus("no root DNSKEY matches the trust anchor")
     else:
-        ds, ds_sigs = fetch(zone, resolve.DS)
-        ds = [d for d in ds if d["type"] == resolve.DS and d["name"].lower() == zone]
-        if not ds:
-            # ponytail: a missing DS is taken at its word; proving it with NSEC/NSEC3 is the upgrade.
-            raise Insecure(f"{zone} has no DS record in its parent, so it is not signed (the denial is not checked)")
+        records, ds_sigs = fetch(zone, resolve.DS)
+        ds = [d for d in records if d["type"] == resolve.DS and d["name"].lower() == zone]
         parent = ds_sigs[0]["rrsig"]["signer"] if ds_sigs else zone.partition(".")[2]
         if not resolve.under(zone, parent) or parent == zone:
             raise Bogus(f"the DS of {zone} is signed by {parent}, which is not above it")
-        verify(ds, ds_sigs, zone_keys(parent, fetch, now, chain, seen), parent, now)
+        parent_keys = zone_keys(parent, fetch, now, chain, seen)
+        if not ds:
+            # A signed parent must prove the DS is missing, or someone may have just dropped it.
+            how = proves_no_ds(zone, parent, records, ds_sigs, parent_keys, now)
+            if not how:
+                raise Bogus(f"{zone} has no DS in {parent or '.'}, and nothing {parent or '.'} signed proves that")
+            raise Insecure(f"{zone} is not signed: {parent or '.'} proves it has no DS, with {how}")
+        verify(ds, ds_sigs, parent_keys, parent, now)
         trusted = [k for k in keys if any(matches_ds(k, zone, d) for d in ds)]
         if not trusted:
             raise Bogus(f"no DNSKEY of {zone} matches its DS in {parent or '.'}")
@@ -265,10 +322,10 @@ def validate(name, qtype, fetch=lookup, now=None):
         sigs = [s for s in sigs if s["rrsig"]["covered"] == qtype_here and s["name"].lower() == name]
         if not sigs:
             # Unsigned is only fine in an unsigned zone; in a signed one the signatures were stripped.
+            # zone_keys raises Insecure, with the proof, if the zone really is unsigned.
             apex = zone_of(name, fetch)
-            if apex == "" or any(d["type"] == resolve.DS for d in fetch(apex, resolve.DS)[0]):
-                raise Bogus(f"{name} {resolve.TYPE_NAMES.get(qtype_here)} came back unsigned, but its zone {apex or '.'} is signed")
-            raise Insecure(f"{name} {resolve.TYPE_NAMES.get(qtype_here)} came back unsigned, and its zone {apex} has no DS (not checked)")
+            zone_keys(apex, fetch, now, chain, seen)
+            raise Bogus(f"{name} {resolve.TYPE_NAMES.get(qtype_here)} came back unsigned, but its zone {apex or '.'} is signed")
         zone = sigs[0]["rrsig"]["signer"]
         signer = verify(here, sigs, zone_keys(zone, fetch, now, chain, seen), zone, now)
         chain.append(f"{name} {resolve.TYPE_NAMES.get(qtype_here)} signed by {zone} key {key_tag(signer)}")

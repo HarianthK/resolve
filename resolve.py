@@ -12,8 +12,8 @@ import time
 ROOTS = {"a": "198.41.0.4", "b": "170.247.170.2", "c": "192.33.4.12", "d": "199.7.91.13", "e": "192.203.230.10",
          "f": "192.5.5.241", "g": "192.112.36.4", "h": "198.97.190.53", "i": "192.36.148.17", "j": "192.58.128.30",
          "k": "193.0.14.129", "l": "199.7.83.42", "m": "202.12.27.33"}
-A, NS, CNAME, SOA, PTR, MX, TXT, AAAA, SRV, OPT, DS, RRSIG, DNSKEY, CAA = 1, 2, 5, 6, 12, 15, 16, 28, 33, 41, 43, 46, 48, 257
-TYPE_NAMES = {A: "A", NS: "NS", CNAME: "CNAME", AAAA: "AAAA", SOA: "SOA", PTR: "PTR", MX: "MX", TXT: "TXT", SRV: "SRV", DS: "DS", RRSIG: "RRSIG", DNSKEY: "DNSKEY", CAA: "CAA"}
+A, NS, CNAME, SOA, PTR, MX, TXT, AAAA, SRV, OPT, DS, RRSIG, NSEC, DNSKEY, NSEC3, CAA = 1, 2, 5, 6, 12, 15, 16, 28, 33, 41, 43, 46, 47, 48, 50, 257
+TYPE_NAMES = {A: "A", NS: "NS", CNAME: "CNAME", AAAA: "AAAA", SOA: "SOA", PTR: "PTR", MX: "MX", TXT: "TXT", SRV: "SRV", DS: "DS", RRSIG: "RRSIG", NSEC: "NSEC", DNSKEY: "DNSKEY", NSEC3: "NSEC3", CAA: "CAA"}
 FORMERR = 1
 # The UDP reply size EDNS asks for: DNS Flag Day 2020's figure, small enough never to fragment.
 EDNS_SIZE = 1232
@@ -35,6 +35,24 @@ STALE_FOR, STALE_TTL = 86400, 30
 
 class Unreachable(LookupError):
     """No server for the name answered at all, as opposed to answering that it does not exist."""
+
+
+class NoData(LookupError):
+    """The name exists but has no records of the type asked; authority holds the reply's proof."""
+    def __init__(self, message, authority):
+        super().__init__(message)
+        self.authority = authority
+
+
+def type_bitmap(data):
+    # NSEC and NSEC3 list the types a name has as bitmaps: a window number, a length, then bits.
+    types, i = set(), 0
+    while i + 2 <= len(data):
+        window, length = data[i], data[i + 1]
+        for j, byte in enumerate(data[i + 2:i + 2 + length]):
+            types.update(window * 256 + j * 8 + bit for bit in range(8) if byte & (0x80 >> bit))
+        i += 2 + length
+    return types
 
 
 def build_query(name, qtype=A, edns=True):
@@ -95,6 +113,18 @@ def read_record(data, pos):
         value = f"{primary} {mailbox} {serial} {refresh} {retry} {expire} {minimum}"
         wire = name_wire(primary) + name_wire(mailbox) + data[at:at + 20]
         return {"name": name, "type": rtype, "ttl": ttl, "value": value, "minimum": minimum, "wire": wire}, pos + rdlen
+    elif rtype == NSEC:
+        # The next name that exists in the zone, and every type this name has (RFC 4034 section 4).
+        following, at = read_name(data, pos)
+        value = {"next": following.lower(), "types": type_bitmap(data[at:pos + rdlen])}
+    elif rtype == NSEC3:
+        # The same, with names hashed (RFC 5155): how, the flags (1 is opt-out), and the next hash.
+        alg, flags, iterations, salt_len = struct.unpack("!BBHB", rdata[:5])
+        salt = rdata[5:5 + salt_len]
+        hash_len = rdata[5 + salt_len]
+        following = rdata[6 + salt_len:6 + salt_len + hash_len]
+        value = {"algorithm": alg, "flags": flags, "iterations": iterations, "salt": salt, "next": following,
+                 "types": type_bitmap(rdata[6 + salt_len + hash_len:])}
     elif rtype == RRSIG:
         # A signature over one type of record at this name: who signed, with which key, valid when.
         covered, alg, labels, original_ttl, expiration, inception, key_tag = struct.unpack("!HBBIIIH", rdata[:18])
@@ -268,7 +298,7 @@ def resolve_fresh(name, qtype=A, verbose=False, depth=0, aliases=()):
             # The alias is only good for as long as both it and what it points at are.
             return remember_answer(key, [dict(r, ttl=min(r["ttl"], cname["ttl"])) for r in target])
         referral = [r for r in reply["authority"] if r["type"] == NS]
-        if not referral: raise LookupError(f"{server} had no answer and no referral for {name}")
+        if not referral: raise NoData(f"{server} had no answer and no referral for {name}", reply["authority"])
         below = referral[0]["name"].lower()
         # Bailiwick: a server may only hand down a zone between its own and the name, never sideways or up.
         if below == zone or not under(below, zone) or not under(name, below):

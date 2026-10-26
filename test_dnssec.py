@@ -1,8 +1,10 @@
 # Run: python test_dnssec.py. Replays real signed answers recorded in test_dnssec.json, then
 # tampers with them; the last check asks the real servers. DOCS.md has how the file was made.
+import base64
 import copy
 import json
 import os
+import struct
 import sys
 import time
 
@@ -10,12 +12,15 @@ import dnssec
 import resolve
 
 FIXTURE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_dnssec.json")
-RECORDED = [("www.ietf.org", resolve.A), ("www.sidn.nl", resolve.A), ("isc.org", resolve.MX), ("nlnetlabs.nl", resolve.A), ("github.com", resolve.A)]
+RECORDED = [("www.ietf.org", resolve.A), ("www.sidn.nl", resolve.A), ("isc.org", resolve.MX), ("nlnetlabs.nl", resolve.A), ("github.com", resolve.A),
+            ("google.se", resolve.A), ("google.nl", resolve.A)]
 
 if "--record" in sys.argv:
     # Asks the real servers for RECORDED and writes every lookup the checks made, bytes as hex.
     found, now = {}, int(time.time())
-    as_json = lambda r: dict(r, wire=r["wire"].hex(), **({"rrsig": dict(r["rrsig"], signature=r["rrsig"]["signature"].hex())} if "rrsig" in r else {}))
+    # NSEC and NSEC3 values hold bytes and sets, so those are parsed again from wire on loading.
+    as_json = lambda r: dict(r, wire=r["wire"].hex(), **({"rrsig": dict(r["rrsig"], signature=r["rrsig"]["signature"].hex())} if "rrsig" in r else {}),
+                             **({"value": None} if r["type"] in (resolve.NSEC, resolve.NSEC3) else {}))
 
     def recording(name, qtype):
         records, sigs = dnssec.lookup(name, qtype)
@@ -35,6 +40,9 @@ NOW = saved["now"]
 
 def from_json(r):
     r = dict(r, wire=bytes.fromhex(r["wire"]))
+    if r["type"] in (resolve.NSEC, resolve.NSEC3):
+        packed = resolve.name_wire(r["name"]) + struct.pack("!HHIH", r["type"], 1, r["ttl"], len(r["wire"])) + r["wire"]
+        r["value"] = resolve.read_record(packed, 0)[0]["value"]
     if "rrsig" in r:
         r["rrsig"] = dict(r["rrsig"], signature=bytes.fromhex(r["rrsig"]["signature"]))
     return r
@@ -173,6 +181,37 @@ assert dnssec.verify([fake], taken["ietf.org|48"][1], [fake], "ietf.org", NOW) =
 result, reason = outcome("www.ietf.org", resolve.A, taken)
 assert result == "bogus" and "matches its DS" in reason, (result, reason)
 print("an attacker's own key, signing its own key set and the answer, is refused: no DS vouches for it")
+
+# An unsigned zone is only insecure if its signed parent proves there is no DS, in one of the
+# three ways: NSEC (se), NSEC3 matching the name (nl), and NSEC3 opt-out covering it (com).
+assert base64.b32hexencode(dnssec.nsec3_hash("example", bytes.fromhex("aabbccdd"), 12)).decode().lower() == "0p9mhaveqvm6t7vbl5lop2u3t2rp3tom"  # RFC 5155 appendix A
+for name, how in [("google.se", "with NSEC"), ("google.nl", "with NSEC3"), ("github.com", "with NSEC3 opt-out")]:
+    result, why = outcome(name, resolve.A)
+    assert result == "insecure" and why.endswith(how), (name, result, why)
+# Dropping the DS of a signed zone is the downgrade this stops: the proof is gone, or belongs to
+# another name (github.com's, replayed for cloudflare.com), or has lost its signature.
+no_proof = copy.deepcopy(ANSWERS)
+no_proof["github.com|43"] = ([r for r in no_proof["github.com|43"][0] if r["type"] == resolve.SOA], no_proof["github.com|43"][1])
+replayed = copy.deepcopy(ANSWERS)
+replayed["cloudflare.com|43"] = copy.deepcopy(ANSWERS["github.com|43"])
+replayed["cloudflare.com|1"] = copy.deepcopy(ANSWERS["github.com|1"])  # unsigned, as an attacker would send it
+replayed["cloudflare.com|6"] = copy.deepcopy(ANSWERS["github.com|6"])  # and an SOA, so the zone is found
+for row in replayed["cloudflare.com|1"][0] + replayed["cloudflare.com|6"][0]:
+    row["name"] = "cloudflare.com"
+unsigned_proof = copy.deepcopy(ANSWERS)
+unsigned_proof["google.nl|43"] = (unsigned_proof["google.nl|43"][0], [s for s in unsigned_proof["google.nl|43"][1] if s["rrsig"]["covered"] != resolve.NSEC3])
+unsigned_proof["google.se|43"] = (unsigned_proof["google.se|43"][0], [s for s in unsigned_proof["google.se|43"][1] if s["rrsig"]["covered"] != resolve.NSEC])
+# For opt-out, only the covering record's signature goes; the one matching com itself stays signed.
+covering = [r["name"] for r in ANSWERS["github.com|43"][0] if r["type"] == resolve.NSEC3 and resolve.SOA not in r["value"]["types"]]
+unsigned_proof["github.com|43"] = (unsigned_proof["github.com|43"][0], [s for s in unsigned_proof["github.com|43"][1] if s["name"] not in covering])
+for why, answers, name, words in [("the NSEC3 records removed", no_proof, "github.com", "nothing com signed proves"),
+                                  ("github.com's denial replayed for cloudflare.com", replayed, "cloudflare.com", "nothing com signed proves"),
+                                  ("the NSEC3 signatures removed", unsigned_proof, "google.nl", "NSEC3 has no signature"),
+                                  ("the covering opt-out NSEC3's signature removed", unsigned_proof, "github.com", "NSEC3 has no signature"),
+                                  ("the NSEC signatures removed", unsigned_proof, "google.se", "NSEC has no signature")]:
+    result, reason = outcome(name, resolve.A, answers)
+    assert result == "bogus" and words in reason, (why, result, reason)
+print("missing DS records proven by NSEC, NSEC3 and NSEC3 opt-out; five forged denials refused")
 
 # The real thing, from the root down, today.
 resolve.known = {"": resolve.known[""]}

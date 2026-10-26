@@ -241,13 +241,57 @@ attacker can also strip signatures from a signed answer. So an unsigned answer
 is only insecure if its zone (the nearest name above it with an SOA) has no
 DS; in a signed zone it is bogus.
 
-What is not checked: the proof that something does not exist. A DS that is
-missing, or an answer that is NODATA or NXDOMAIN, comes with NSEC or NSEC3
-records proving the gap, and those are taken at their word here. A real
-validator checks them, and until this one does, an attacker who can stop the
-DS for a signed zone from arriving gets that zone called insecure rather than
-bogus. ECDSA P-384, Ed448 and the old SHA-1 algorithms also count as
-insecure, as RFC 4035 says to treat algorithms a validator does not know.
+ECDSA P-384, Ed448 and the old SHA-1 algorithms count as insecure, as RFC
+4035 says to treat algorithms a validator does not know.
+
+### Proving a DS is not there
+
+"No DS, so insecure" was at first taken at the parent's word, and that was a
+hole: an attacker who could stop a signed zone's DS from arriving got the zone
+called insecure, not bogus, and its forged answers believed. A signed zone
+cannot just say a name has nothing; it has to prove it, with records that list
+what does exist and are signed like anything else.
+
+NSEC (RFC 4034) is the plain version: an NSEC at a name gives the next name in
+the zone, in canonical order, and every type this name has. So an NSEC at
+`google.se`, signed by `se`, listing NS but not DS, proves `google.se` is a
+delegation with no DS. NSEC lets anyone walk the whole zone by following the
+next names, so most big zones use NSEC3 (RFC 5155) instead, which does the
+same over hashed names: SHA-1 of the name and a salt, iterated, written in
+base32hex as the record's first label. An NSEC3 whose hash is
+`google.nl`'s, listing NS but not DS, proves the same thing for `nl`.
+
+`com`, `org`, `net` and most others go one step further with opt-out. Their
+millions of unsigned delegations get no NSEC3 records of their own at all. The
+proof instead has two parts: an NSEC3 matching the closest name above that
+does exist (`com` itself), and an NSEC3 flagged opt-out whose range of hashes
+covers the next name down (`github.com`), which says "anything in here may be
+an unsigned delegation". That is the weaker statement, but it is all that is
+there to check, and it still stops a signed zone's DS from being dropped,
+since a signed child always has its own NSEC3 with the DS bit set.
+
+`dnssec.py` now checks all three, and every record the proof rests on must
+carry the parent's valid signature. A missing DS with no such proof is bogus.
+The same check runs when an answer arrives unsigned: its zone's keys are
+looked up, and only a proven missing DS makes it insecure. NSEC3 with more
+than 150 iterations is called insecure, as RFC 9276 allows, rather than spent
+time on. The proofs that come with NODATA and NXDOMAIN answers themselves are
+still not checked.
+
+The parser keeps them now: a reply with no answer and no referral raises
+`NoData`, a `LookupError` that carries the authority section, where the NSEC
+or NSEC3 records and their signatures are. The hash is checked against RFC
+5155's own example, `example` with salt `aabbccdd` and 12 iterations. The
+test records `google.se` (NSEC), `google.nl` (NSEC3) and `github.com` (opt-out),
+and refuses five forged denials: the proof removed, `github.com`'s proof
+replayed for `cloudflare.com`, and the signatures taken off the NSEC3, the
+covering opt-out NSEC3 and the NSEC. Six breakages fail it: hashing the
+encloser instead of the next closer name, hashing the name's text instead of
+its wire form, not checking the covering record's signature, not checking the
+NSEC's, accepting a missing DS with no proof, and not tracing an unsigned
+answer to its zone. Two of those first passed, because the tests that should
+have caught them failed earlier for another reason; the tests now strip one
+signature at a time.
 
 ### Ed25519
 
