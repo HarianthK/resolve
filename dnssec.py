@@ -10,7 +10,7 @@ import resolve
 # (key tag, algorithm, digest type) -> SHA-256 of the key. Everything else is checked against these.
 ANCHORS = {(20326, 8, 2): bytes.fromhex("E06D44B80B8F1D39A95C0B0D7C65D08458E880409BBC683457104237C7F8EC8D"),
            (38696, 8, 2): bytes.fromhex("683D2D0ACB8C9B712A1948B27F741219298D0A450D612C483AF444A4C0FB2B16")}
-ALGORITHMS = {8: "RSA/SHA-256", 10: "RSA/SHA-512", 13: "ECDSA P-256/SHA-256"}
+ALGORITHMS = {8: "RSA/SHA-256", 10: "RSA/SHA-512", 13: "ECDSA P-256/SHA-256", 15: "Ed25519"}
 
 # NIST P-256: y^2 = x^3 - 3x + b over the integers mod P, with base point G of prime order N.
 P = 0xFFFFFFFF00000001000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFF
@@ -69,6 +69,58 @@ def ecdsa_ok(key, signature, data):
     e, w = int.from_bytes(hashlib.sha256(data).digest(), "big"), pow(s, -1, N)
     point = add(times(e * w % N, G), times(r * w % N, q))
     return point is not None and point[0] % N == r
+
+
+# Ed25519 (RFC 8032): the twisted Edwards curve -x^2 + y^2 = 1 + d x^2 y^2 over the integers mod
+# 2^255 - 19, whose base point has prime order L. Its addition law has no special cases.
+EP = 2 ** 255 - 19
+ED = -121665 * pow(121666, -1, EP) % EP
+EL = 2 ** 252 + 27742317777372353535851937790883648493
+
+
+def ed_add(p1, p2):
+    (x1, y1), (x2, y2) = p1, p2
+    t = ED * x1 * x2 * y1 * y2 % EP
+    return (x1 * y2 + x2 * y1) * pow(1 + t, -1, EP) % EP, (y1 * y2 + x1 * x2) * pow(1 - t, -1, EP) % EP
+
+
+def ed_times(k, point):
+    total = (0, 1)  # the identity
+    while k:
+        if k & 1:
+            total = ed_add(total, point)
+        point, k = ed_add(point, point), k >> 1
+    return total
+
+
+def ed_decode(data):
+    # A point is y in little-endian with x's low bit on top; x comes back from the curve equation.
+    if len(data) != 32:
+        return None
+    n = int.from_bytes(data, "little")
+    y, sign = n & (2 ** 255 - 1), n >> 255
+    if y >= EP:
+        return None
+    x2 = (y * y - 1) * pow(ED * y * y + 1, -1, EP) % EP
+    x = pow(x2, (EP + 3) // 8, EP)
+    if (x * x - x2) % EP:
+        x = x * pow(2, (EP - 1) // 4, EP) % EP
+    if (x * x - x2) % EP or (x == 0 and sign):
+        return None
+    return (EP - x if x & 1 != sign else x), y
+
+
+ED_BASE = ed_decode((4 * pow(5, -1, EP) % EP).to_bytes(32, "little"))
+
+
+def ed25519_ok(key, signature, data):
+    # S times the base point must equal R plus h times the key, h hashing R, the key and the data.
+    a, r = ed_decode(key), ed_decode(signature[:32]) if len(signature) == 64 else None
+    s = int.from_bytes(signature[32:], "little")
+    if a is None or r is None or s >= EL:
+        return False
+    h = int.from_bytes(hashlib.sha512(signature[:32] + key + data).digest(), "little") % EL
+    return ed_times(s, ED_BASE) == ed_add(r, ed_times(h, a))
 
 
 def rsa_ok(key, signature, data, hash_name):
@@ -130,6 +182,8 @@ def verify(rrset, sigs, keys, zone, now):
                 if key_tag(key) != r["key_tag"] or k[3] != r["algorithm"] or not k[0] & 1:
                     continue  # flags bit 7 (the high byte's low bit) marks a zone key
                 if r["algorithm"] == 13 and ecdsa_ok(k[4:], r["signature"], data):
+                    return key
+                if r["algorithm"] == 15 and ed25519_ok(k[4:], r["signature"], data):
                     return key
                 if r["algorithm"] in (8, 10) and rsa_ok(k[4:], r["signature"], data, "sha256" if r["algorithm"] == 8 else "sha512"):
                     return key

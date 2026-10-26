@@ -246,8 +246,26 @@ missing, or an answer that is NODATA or NXDOMAIN, comes with NSEC or NSEC3
 records proving the gap, and those are taken at their word here. A real
 validator checks them, and until this one does, an attacker who can stop the
 DS for a signed zone from arriving gets that zone called insecure rather than
-bogus. Ed25519, ECDSA P-384 and the old SHA-1 algorithms also count as
+bogus. ECDSA P-384, Ed448 and the old SHA-1 algorithms also count as
 insecure, as RFC 4035 says to treat algorithms a validator does not know.
+
+### Ed25519
+
+Algorithm 15 (RFC 8080) is Ed25519, on a different curve again, the twisted
+Edwards curve -x^2 + y^2 = 1 + d x^2 y^2 modulo 2^255 - 19. Its addition law
+is one formula with no special cases, not even for doubling or the identity,
+which makes it the shortest of the three to write. A point travels as its y
+with one bit for x's sign, so decoding takes a square root mod p. A signature
+(R, S) holds when S times the base point equals R plus h times the key, h
+being SHA-512 of R, the key and the signed data. It is checked against RFC
+8032's own test vectors and, live, against `ed25519.nl` and `ed25519.no`,
+two zones signed with nothing else.
+
+Of three breakages, two fail the test (R and the key hashed in the wrong
+order, the sign of d flipped). The third, inverting the sign bit when
+decoding, changes nothing at all, and that is right: it negates every point
+the same way, the base point included, and negating both sides of
+S*B = R + h*A leaves it true. So it is not a bug a test could see.
 
 ### Two bugs it found in the resolver
 

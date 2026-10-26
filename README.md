@@ -24,7 +24,7 @@ so it goes again, this time starting from the .org server it already knows.
   and IPv6.
 - DNSSEC validation with `--dnssec` (in `dnssec.py`): the answer is used only
   if its signature chains up to the root zone's published key, through each
-  zone's DS record in its parent. RSA/SHA-256, RSA/SHA-512 and ECDSA P-256,
+  zone's DS record in its parent. RSA/SHA-256, RSA/SHA-512, ECDSA P-256 and Ed25519,
   written from the arithmetic up, with no crypto library. A forged answer is
   called BOGUS and not printed; an unsigned zone is called insecure.
 - Name compression, the pointers that let a reply say "same name as byte 12".
