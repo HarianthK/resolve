@@ -14,7 +14,8 @@ import resolve
 FIXTURE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_dnssec.json")
 RECORDED = [("www.ietf.org", resolve.A), ("www.sidn.nl", resolve.A), ("isc.org", resolve.MX), ("nlnetlabs.nl", resolve.A), ("github.com", resolve.A),
             ("google.se", resolve.A), ("google.nl", resolve.A), ("nosuchname-xq.nlnetlabs.nl", resolve.A), ("nlnetlabs.nl", resolve.SRV),
-            ("nosuchname-xq.ietf.org", resolve.A), ("nosuchname-xq.nl", resolve.A), ("nl", resolve.SRV), ("nosuchname-xq.com", resolve.A)]
+            ("nosuchname-xq.ietf.org", resolve.A), ("nosuchname-xq.nl", resolve.A), ("nl", resolve.SRV), ("nosuchname-xq.com", resolve.A),
+            ("zq9x-wild.dnsviz.net", resolve.A), ("a.b.zq9x.dnsviz.net", resolve.A), ("dnsviz.net", resolve.A)]
 
 if "--record" in sys.argv:
     # Asks the real servers for RECORDED and writes every lookup the checks made, bytes as hex.
@@ -264,6 +265,32 @@ for why, answers, name, qtype, words in forged:
     result, reason = outcome(name, qtype, answers)
     assert result == "bogus" and words in reason, (why, result, reason)
 print(f"five empty answers proven, an opt-out one insecure; {len(forged)} forged denials refused")
+
+# A wildcard's answer is signed for *.dnsviz.net, so it needs proof that the name asked for is not there.
+for name in ("zq9x-wild.dnsviz.net", "a.b.zq9x.dnsviz.net"):
+    result, chain = outcome(name, resolve.A)
+    assert result == "secure" and f"{name} is from the wildcard *.dnsviz.net: dnsviz.net proves no closer name with NSEC" in chain, (name, result, chain)
+wild = "zq9x-wild.dnsviz.net|5"
+forged = []
+no_proof = copy.deepcopy(ANSWERS)
+no_proof[wild] = ([r for r in no_proof[wild][0] if r["type"] != resolve.NSEC], no_proof[wild][1])
+forged.append(("the NSEC removed", no_proof, "zq9x-wild.dnsviz.net", "came from a wildcard"))
+unsigned = copy.deepcopy(ANSWERS)
+unsigned[wild] = (unsigned[wild][0], [s for s in unsigned[wild][1] if s["rrsig"]["covered"] != resolve.NSEC])
+forged.append(("the NSEC's signature removed", unsigned, "zq9x-wild.dnsviz.net", "NSEC has no signature"))
+# The attack itself: the wildcard's signed CNAME replayed for www.dnsviz.net, which exists, and for a
+# name under it, which the NSEC would cover if it were checked against the full name, not the next closer.
+for victim in ("www.dnsviz.net", "a.www.dnsviz.net"):
+    replayed = copy.deepcopy(ANSWERS)
+    replayed[f"{victim}|5"] = copy.deepcopy(ANSWERS[wild])
+    for r in replayed[f"{victim}|5"][0] + replayed[f"{victim}|5"][1]:
+        if r["type"] == resolve.CNAME or r["type"] == resolve.RRSIG and r["rrsig"]["covered"] == resolve.CNAME:
+            r["name"] = victim
+    forged.append((f"the wildcard replayed for {victim}", replayed, victim, "came from a wildcard"))
+for why, answers, name, words in forged:
+    result, reason = outcome(name, resolve.A, answers)
+    assert result == "bogus" and words in reason, (why, result, reason)
+print(f"two wildcard answers proven; {len(forged)} forged ones refused, among them the wildcard replayed over a real name")
 
 # The real thing, from the root down, today.
 resolve.known = {"": resolve.known[""]}

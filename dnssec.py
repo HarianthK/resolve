@@ -389,6 +389,27 @@ def zone_of(name, fetch):
     return ""
 
 
+def proves_expansion(name, labels, zone, proof, sigs, keys, now):
+    # For a wildcard answer: a signed NSEC covering name, or an NSEC3 covering the hash of the name one
+    # label below the wildcard's parent. Returns the words for the chain, or None.
+    checked = checker(zone, sigs, keys, now)
+    encloser = ".".join(name.split(".")[-labels:]) if labels else ""
+    closer = ".".join(name.split(".")[-labels - 1:])
+    for r in proof:
+        if r["type"] == resolve.NSEC and resolve.under(r["name"].lower(), zone) and covers(order(r["name"]), order(r["value"]["next"]), order(closer)):
+            checked(r)
+            return f"{name} is from the wildcard *.{encloser}: {zone} proves no closer name with NSEC"
+    owners, salt, iterations = hashed(zone, proof)
+    target = nsec3_hash(closer, salt, iterations) if owners else None
+    cover = next((r for owner, r in owners.items() if covers(owner, r["value"]["next"], target)), None)
+    if not cover:
+        return None
+    checked(cover)
+    if cover["value"]["flags"] & 1:
+        raise Insecure(f"{name} came from a wildcard in an opt-out span of {zone}, where unsigned names are not listed")
+    return f"{name} is from the wildcard *.{encloser}: {zone} proves no closer name with NSEC3"
+
+
 def denial(name, qtype, proof, sigs, fetch, now, chain, seen):
     # The proven words for an empty answer; raises Bogus if the proof fails or never came.
     sigs = [s for s in sigs if s["rrsig"]["covered"] in (resolve.NSEC, resolve.NSEC3)]
@@ -414,13 +435,14 @@ def validate(name, qtype, fetch=lookup, now=None):
         records, sigs = fetch(name, qtype)
         here = [r for r in records if r["name"].lower() == name and r["type"] == qtype]
         if not here:
-            alias, alias_sigs = fetch(name, resolve.CNAME)
-            alias = [r for r in alias if r["name"].lower() == name and r["type"] == resolve.CNAME]
+            alias_records, alias_sigs = fetch(name, resolve.CNAME)
+            alias = [r for r in alias_records if r["name"].lower() == name and r["type"] == resolve.CNAME]
             if not alias:
                 return [], chain + [denial(name, qtype, records, sigs, fetch, now, chain, seen)]
-            here, sigs, qtype_here = alias, alias_sigs, resolve.CNAME
+            here, records, sigs, qtype_here = alias, alias_records, alias_sigs, resolve.CNAME
         else:
             qtype_here = qtype
+        all_sigs = sigs
         sigs = [s for s in sigs if s["rrsig"]["covered"] == qtype_here and s["name"].lower() == name]
         if not sigs:
             # Unsigned is only fine in an unsigned zone; in a signed one the signatures were stripped.
@@ -429,8 +451,16 @@ def validate(name, qtype, fetch=lookup, now=None):
             zone_keys(apex, fetch, now, chain, seen)
             raise Bogus(f"{name} {resolve.TYPE_NAMES.get(qtype_here)} came back unsigned, but its zone {apex or '.'} is signed")
         zone = sigs[0]["rrsig"]["signer"]
-        signer = verify(here, sigs, zone_keys(zone, fetch, now, chain, seen), zone, now)
+        keys = zone_keys(zone, fetch, now, chain, seen)
+        signer = verify(here, sigs, keys, zone, now)
         chain.append(f"{name} {resolve.TYPE_NAMES.get(qtype_here)} signed by {zone} key {key_tag(signer)}")
+        labels = min(s["rrsig"]["labels"] for s in sigs)
+        if labels < len(name.split(".")):
+            # Signed for *.encloser, so it stands for name only if no closer name exists (RFC 4035 5.3.4).
+            how = proves_expansion(name, labels, zone, records, all_sigs, keys, now)
+            if not how:
+                raise Bogus(f"{name} {resolve.TYPE_NAMES.get(qtype_here)} came from a wildcard, but nothing {zone} signed proves {name} itself does not exist")
+            chain.append(how)
         if qtype_here == qtype:
             return here, chain
         name = here[0]["value"].lower()

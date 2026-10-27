@@ -290,7 +290,9 @@ def resolve_fresh(name, qtype=A, verbose=False, depth=0, aliases=()):
         about = [r for r in reply["answers"] if r["name"].lower() == name]
         wanted = [r for r in about if r["type"] == qtype]
         # With the DO bit set, the signatures over the answer come back alongside it.
-        if wanted: return remember_answer(key, wanted + [r for r in about if r["type"] == RRSIG and r["rrsig"]["covered"] == qtype])
+        # A wildcard's answer comes with the NSEC or NSEC3 proving no closer name exists, so that is kept too.
+        proof = [r for r in reply["authority"] if r["type"] in (NSEC, NSEC3) or r["type"] == RRSIG and r["rrsig"]["covered"] in (NSEC, NSEC3)]
+        if wanted: return remember_answer(key, wanted + [r for r in about if r["type"] == RRSIG and r["rrsig"]["covered"] == qtype] + proof)
         cname = next((r for r in about if r["type"] == CNAME), None)
         if cname:
             if verbose: print(f"  {name} is an alias for {cname['value']}")

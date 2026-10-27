@@ -341,6 +341,38 @@ the name itself; it is now held to a proper ancestor. One of the DS proof's
 breakages, not requiring the opt-out flag, also passed until a test passed off
 a name `nl` says does not exist as an unsigned zone.
 
+### Wildcards
+
+A zone with `*.dnsviz.net` answers every name under it that does not exist
+on its own. The answer is signed once, for the wildcard, and the RRSIG's
+labels field says so: 2 for a name of 3 labels, which `signed_data` already
+turned back into `*.dnsviz.net` to check the signature. But that signature
+says nothing about which name it was expanded for, so an attacker can copy
+it onto any name under the zone, `www.dnsviz.net` included, which exists and
+has its own records. RFC 4035 section 5.3.4 closes this: the answer must come
+with signed proof that no closer name exists, an NSEC covering the next
+closer name (one label below the wildcard's parent), or an NSEC3 covering its
+hash. resolve now keeps the NSEC and NSEC3 records from the authority section
+of a signed answer, and `validate` requires that proof whenever the labels
+count is short.
+
+It has to be the next closer name, not the full one. The NSEC at `dnsviz.net`
+runs from `www.dnsviz.net` round to the apex, so it covers
+`a.www.dnsviz.net`, a name under one that exists, where the wildcard does not
+apply. Checked against the full name, that replay passed; the test now
+makes it.
+
+Online signers such as Route 53 (`herokuapp.com`) sign each expanded answer
+for its own name, with the full label count, and need no proof. Of about 100
+signed zones tried, only `dnsviz.net` had a wildcard signed ahead of time, so
+the test records its answers for `zq9x-wild.dnsviz.net` and
+`a.b.zq9x.dnsviz.net`, and refuses four forgeries: the NSEC removed, its
+signature removed, and the wildcard replayed for `www.dnsviz.net` and
+`a.www.dnsviz.net`. Four breakages fail it: not checking wildcards, checking
+the full name, not checking the NSEC's signature, and misreading the labels
+count. The NSEC3 form is written to the same rule but no live zone found
+uses it, so no recording exercises it yet.
+
 ### Ed25519
 
 Algorithm 15 (RFC 8080) is Ed25519, on a different curve again, the twisted
