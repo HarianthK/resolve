@@ -38,7 +38,7 @@ class Unreachable(LookupError):
 
 
 class NoData(LookupError):
-    """The name exists but has no records of the type asked; authority holds the reply's proof."""
+    """No records of the type asked, or no such name; authority holds the reply's proof."""
     def __init__(self, message, authority):
         super().__init__(message)
         self.authority = authority
@@ -285,7 +285,7 @@ def resolve_fresh(name, qtype=A, verbose=False, depth=0, aliases=()):
             # TTL and its minimum field is how long the name may be remembered as missing.
             soa = next((r for r in reply["authority"] if r["type"] == SOA), None)
             if soa: missing[name] = clock() + min(soa["ttl"], soa["minimum"])
-            raise LookupError(f"{name} does not exist (NXDOMAIN)")
+            raise NoData(f"{name} does not exist (NXDOMAIN)", reply["authority"])
         # Only records about the name asked are believed; anything else in the reply could be planted.
         about = [r for r in reply["answers"] if r["name"].lower() == name]
         wanted = [r for r in about if r["type"] == qtype]

@@ -13,7 +13,8 @@ import resolve
 
 FIXTURE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_dnssec.json")
 RECORDED = [("www.ietf.org", resolve.A), ("www.sidn.nl", resolve.A), ("isc.org", resolve.MX), ("nlnetlabs.nl", resolve.A), ("github.com", resolve.A),
-            ("google.se", resolve.A), ("google.nl", resolve.A)]
+            ("google.se", resolve.A), ("google.nl", resolve.A), ("nosuchname-xq.nlnetlabs.nl", resolve.A), ("nlnetlabs.nl", resolve.SRV),
+            ("nosuchname-xq.ietf.org", resolve.A), ("nosuchname-xq.nl", resolve.A), ("nl", resolve.SRV), ("nosuchname-xq.com", resolve.A)]
 
 if "--record" in sys.argv:
     # Asks the real servers for RECORDED and writes every lookup the checks made, bytes as hex.
@@ -198,6 +199,11 @@ replayed["cloudflare.com|1"] = copy.deepcopy(ANSWERS["github.com|1"])  # unsigne
 replayed["cloudflare.com|6"] = copy.deepcopy(ANSWERS["github.com|6"])  # and an SOA, so the zone is found
 for row in replayed["cloudflare.com|1"][0] + replayed["cloudflare.com|6"][0]:
     row["name"] = "cloudflare.com"
+# And a name nl says does not exist, passed off as an unsigned zone: nl's spans are not opt-out.
+for source, key in [("nosuchname-xq.nl|1", "|43"), ("github.com|1", "|1"), ("github.com|6", "|6")]:
+    replayed["nosuchname-xq.nl" + key] = copy.deepcopy(ANSWERS[source])
+    for row in replayed["nosuchname-xq.nl" + key][0] if key != "|43" else []:
+        row["name"] = "nosuchname-xq.nl"
 unsigned_proof = copy.deepcopy(ANSWERS)
 unsigned_proof["google.nl|43"] = (unsigned_proof["google.nl|43"][0], [s for s in unsigned_proof["google.nl|43"][1] if s["rrsig"]["covered"] != resolve.NSEC3])
 unsigned_proof["google.se|43"] = (unsigned_proof["google.se|43"][0], [s for s in unsigned_proof["google.se|43"][1] if s["rrsig"]["covered"] != resolve.NSEC])
@@ -206,12 +212,58 @@ covering = [r["name"] for r in ANSWERS["github.com|43"][0] if r["type"] == resol
 unsigned_proof["github.com|43"] = (unsigned_proof["github.com|43"][0], [s for s in unsigned_proof["github.com|43"][1] if s["name"] not in covering])
 for why, answers, name, words in [("the NSEC3 records removed", no_proof, "github.com", "nothing com signed proves"),
                                   ("github.com's denial replayed for cloudflare.com", replayed, "cloudflare.com", "nothing com signed proves"),
+                                  ("a missing name passed off as an unsigned zone", replayed, "nosuchname-xq.nl", "nothing nl signed proves"),
                                   ("the NSEC3 signatures removed", unsigned_proof, "google.nl", "NSEC3 has no signature"),
                                   ("the covering opt-out NSEC3's signature removed", unsigned_proof, "github.com", "NSEC3 has no signature"),
                                   ("the NSEC signatures removed", unsigned_proof, "google.se", "NSEC has no signature")]:
     result, reason = outcome(name, resolve.A, answers)
     assert result == "bogus" and words in reason, (why, result, reason)
-print("missing DS records proven by NSEC, NSEC3 and NSEC3 opt-out; five forged denials refused")
+print("missing DS records proven by NSEC, NSEC3 and NSEC3 opt-out; six forged denials refused")
+
+# Empty answers are proven too: no such name and no such record, by NSEC, NSEC3, and the one-record
+# NSEC some signers make up on the fly (ietf.org's). A denial in an opt-out span proves nothing.
+for name, qtype, words in [("nosuchname-xq.nlnetlabs.nl", resolve.A, "does not exist: nlnetlabs.nl proves it with NSEC"),
+                           ("nlnetlabs.nl", resolve.SRV, "has no SRV records: nlnetlabs.nl proves it with NSEC"),
+                           ("nosuchname-xq.ietf.org", resolve.A, "has no A records: ietf.org proves it with NSEC"),
+                           ("nosuchname-xq.nl", resolve.A, "does not exist: nl proves it with NSEC3"),
+                           ("nl", resolve.SRV, "has no SRV records: nl proves it with NSEC3")]:
+    result, chain = outcome(name, qtype)
+    assert result == "secure" and chain[-1] == f"{name} {words}", (name, result, chain)
+result, why = outcome("nosuchname-xq.com", resolve.A)
+assert result == "insecure" and "opt-out span of com" in why, why
+# An attacker who wants a real name to vanish must forge or misuse the proof, and each way is refused.
+nx, nodata = "nosuchname-xq.nlnetlabs.nl|1", "nlnetlabs.nl|33"
+forged = []
+wild_gone = copy.deepcopy(ANSWERS)
+wild_gone[nx] = ([r for r in wild_gone[nx][0] if r["name"] != "nlnetlabs.nl" or r["type"] != resolve.NSEC], wild_gone[nx][1])
+forged.append(("the NSEC covering the wildcard removed", wild_gone, "nosuchname-xq.nlnetlabs.nl", resolve.A, "nothing nlnetlabs.nl signed proves"))
+forged.append(("the wildcard NSEC's signature removed", changed(nx, 1, [(s["name"], s["rrsig"]["covered"]) for s in ANSWERS[nx][1]].index(("nlnetlabs.nl", resolve.NSEC)), lambda r: r["rrsig"].update(covered=0)),
+               "nosuchname-xq.nlnetlabs.nl", resolve.A, "NSEC has no signature"))
+# A name at the very end of an NSEC's span exists; the span only covers what lies strictly inside.
+ends = copy.deepcopy(ANSWERS)
+ends["6only.nlnetlabs.nl|1"] = copy.deepcopy(ANSWERS[nx])
+forged.append(("the denial replayed for the name its NSEC ends at", ends, "6only.nlnetlabs.nl", resolve.A, "signed proves"))
+forged.append(("the covering NSEC's signature removed", changed(nx, 1, [s["name"] for s in ANSWERS[nx][1]].index("norrsigs.nlnetlabs.nl"), lambda r: r["rrsig"].update(covered=0)),
+               "nosuchname-xq.nlnetlabs.nl", resolve.A, "NSEC has no signature"))
+unsigned = copy.deepcopy(ANSWERS)
+unsigned[nx] = (unsigned[nx][0], [])
+forged.append(("the whole denial unsigned", unsigned, "nosuchname-xq.nlnetlabs.nl", resolve.A, "no signed proof"))
+for victim, qtype, source in [("nlnetlabs.nl", resolve.A, nodata), ("www.ietf.org", resolve.A, "nosuchname-xq.ietf.org|1"), ("nl", resolve.NS, "nl|33")]:
+    replayed = copy.deepcopy(ANSWERS)
+    replayed[f"{victim}|{qtype}"] = copy.deepcopy(ANSWERS[source])
+    forged.append((f"{source}'s denial replayed for {victim}", replayed, victim, qtype, "signed proves"))
+for i, r in enumerate(ANSWERS["nosuchname-xq.nl|1"][0]):
+    if r["type"] == resolve.NSEC3:
+        dropped = copy.deepcopy(ANSWERS)
+        dropped["nosuchname-xq.nl|1"][0].pop(i)
+        forged.append((f"NSEC3 {r['name']} removed", dropped, "nosuchname-xq.nl", resolve.A, "nothing nl signed proves"))
+        stripped = copy.deepcopy(ANSWERS)
+        stripped["nosuchname-xq.nl|1"][1][:] = [s for s in stripped["nosuchname-xq.nl|1"][1] if s["name"] != r["name"]]
+        forged.append((f"NSEC3 {r['name']}'s signature removed", stripped, "nosuchname-xq.nl", resolve.A, "NSEC3 has no signature"))
+for why, answers, name, qtype, words in forged:
+    result, reason = outcome(name, qtype, answers)
+    assert result == "bogus" and words in reason, (why, result, reason)
+print(f"five empty answers proven, an opt-out one insecure; {len(forged)} forged denials refused")
 
 # The real thing, from the root down, today.
 resolve.known = {"": resolve.known[""]}

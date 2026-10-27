@@ -28,7 +28,8 @@ so it goes again, this time starting from the .org server it already knows.
   written from the arithmetic up, with no crypto library. A forged answer is
   called BOGUS and not printed; an unsigned zone is called insecure, but only
   when its signed parent proves the zone has no DS, with NSEC, NSEC3 or NSEC3
-  opt-out.
+  opt-out. An empty answer, no such name or no such record, needs the same
+  signed proof.
 - Name compression, the pointers that let a reply say "same name as byte 12".
 - Referrals with glue (the name servers' addresses come along) and without
   (a name server's own name has to be resolved first, from scratch, and if one cannot be found the next is tried).

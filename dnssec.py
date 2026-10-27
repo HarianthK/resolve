@@ -212,46 +212,132 @@ def nsec3_hash(name, salt, iterations):
     return digest
 
 
-def proves_no_ds(zone, parent, proof, sigs, keys, now):
-    # Whether signed NSEC or NSEC3 records from parent show zone is a delegation with no DS.
-    # Returns how, or None. Every record used must carry parent's valid signature.
+def order(name):
+    # RFC 4034 section 6.1: names sort by their labels from the right, each as lowercase bytes.
+    return tuple(label.encode("latin-1") for label in reversed(name.lower().split("."))) if name else ()
+
+
+def covers(owner, after, target):
+    # Whether target falls strictly between a record's owner and next; the last record wraps round.
+    return owner < target < after if owner < after else target > owner or target < after
+
+
+def checker(zone, sigs, keys, now):
+    # Returns a function that passes a record through only if zone's keys signed it.
     def checked(r):
-        verify([r], [s for s in sigs if s["rrsig"]["covered"] == r["type"] and s["name"].lower() == r["name"].lower()], keys, parent, now)
+        verify([r], [s for s in sigs if s["rrsig"]["covered"] == r["type"] and s["name"].lower() == r["name"].lower()], keys, zone, now)
         return r
-    delegation = lambda types: resolve.NS in types and resolve.DS not in types and resolve.SOA not in types
-    for r in proof:
-        if r["type"] == resolve.NSEC and r["name"].lower() == zone:
-            return "NSEC" if delegation(checked(r)["value"]["types"]) else None
-    nsec3 = [r for r in proof if r["type"] == resolve.NSEC3 and r["name"].lower().partition(".")[2] == parent]
+    return checked
+
+
+def hashed(zone, proof):
+    # zone's NSEC3 records by the hash they are named for, with the salt and iterations they share.
+    nsec3 = [r for r in proof if r["type"] == resolve.NSEC3 and r["name"].lower().partition(".")[2] == zone]
     if not nsec3:
-        return None
+        return {}, b"", 0
     alg, salt, iterations = nsec3[0]["value"]["algorithm"], nsec3[0]["value"]["salt"], nsec3[0]["value"]["iterations"]
     if alg != 1 or iterations > 150 or any((r["value"]["salt"], r["value"]["iterations"]) != (salt, iterations) for r in nsec3):
-        raise Insecure(f"{parent}'s NSEC3 uses parameters this does not check (algorithm {alg}, {iterations} iterations)")
+        raise Insecure(f"{zone or '.'}'s NSEC3 uses parameters this does not check (algorithm {alg}, {iterations} iterations)")
     owners = {}
     for r in nsec3:
         try:
             owners[base64.b32hexdecode(r["name"].partition(".")[0].upper())] = r
         except ValueError:
             pass
-    exact = owners.get(nsec3_hash(zone, salt, iterations))
-    if exact:
-        return "NSEC3" if delegation(checked(exact)["value"]["types"]) else None
-    # Opt-out (5155 section 7.2.4): an NSEC3 matches the closest name above zone that exists, and
-    # one flagged opt-out covers the hash of the name one label below it, so unsigned children are skipped.
-    labels = zone.split(".")
-    for i in range(1, len(labels) - len(parent.split(".")) + 2 if parent else len(labels) + 1):
+    return owners, salt, iterations
+
+
+def closest_encloser(name, zone, owners, salt, iterations):
+    # RFC 5155 section 7.2.1: the nearest name above name that an NSEC3 matches, its record, and
+    # the record covering the hash of the name one label below it; None if the records show no such pair.
+    labels = name.split(".")
+    for i in range(1, len(labels) - (len(zone.split(".")) if zone else 0) + 1):
         encloser, closer = ".".join(labels[i:]), ".".join(labels[i - 1:])
         if nsec3_hash(encloser, salt, iterations) in owners:
             target = nsec3_hash(closer, salt, iterations)
-            for owner, r in owners.items():
-                after = r["value"]["next"]
-                if r["value"]["flags"] & 1 and (owner < target < after if owner < after else (target > owner or target < after)):
-                    checked(owners[nsec3_hash(encloser, salt, iterations)])
-                    checked(r)
-                    return "NSEC3 opt-out"
-            return None
+            cover = next((r for owner, r in owners.items() if covers(owner, r["value"]["next"], target)), None)
+            return (encloser, owners[nsec3_hash(encloser, salt, iterations)], cover) if cover else None
     return None
+
+
+def proves_no_ds(zone, parent, proof, sigs, keys, now):
+    # Whether signed NSEC or NSEC3 records from parent show zone is a delegation with no DS.
+    # Returns how, or None. Every record used must carry parent's valid signature.
+    checked = checker(parent, sigs, keys, now)
+    delegation = lambda types: resolve.NS in types and resolve.DS not in types and resolve.SOA not in types
+    for r in proof:
+        if r["type"] == resolve.NSEC and r["name"].lower() == zone:
+            return "NSEC" if delegation(checked(r)["value"]["types"]) else None
+    owners, salt, iterations = hashed(parent, proof)
+    if not owners:
+        return None
+    exact = owners.get(nsec3_hash(zone, salt, iterations))
+    if exact:
+        return "NSEC3" if delegation(checked(exact)["value"]["types"]) else None
+    # Opt-out (5155 section 7.2.4): the record covering the name below the closest encloser is
+    # flagged opt-out, so unsigned children like zone are skipped by the chain.
+    found = closest_encloser(zone, parent, owners, salt, iterations)
+    if found and found[2]["value"]["flags"] & 1:
+        checked(found[1])
+        checked(found[2])
+        return "NSEC3 opt-out"
+    return None
+
+
+def proves_missing(name, qtype, zone, proof, sigs, keys, now):
+    # How zone's signed NSEC or NSEC3 records show name has no qtype records, or is not there at all.
+    # Returns the words for the chain, or None if they show neither.
+    checked = checker(zone, sigs, keys, now)
+    kind = resolve.TYPE_NAMES.get(qtype, qtype)
+    # A name with no qtype and no CNAME; a parent's record for a delegation says nothing of the child's types.
+    absent = lambda types: qtype not in types and resolve.CNAME not in types and (
+        qtype == resolve.DS or resolve.NS not in types or resolve.SOA in types)
+    nsec = [r for r in proof if r["type"] == resolve.NSEC and resolve.under(r["name"].lower(), zone)]
+    for r in nsec:
+        if r["name"].lower() == name:
+            return f"{name} has no {kind} records: {zone or '.'} proves it with NSEC" if absent(checked(r)["value"]["types"]) else None
+    if nsec:
+        # RFC 4035 section 5.4: one NSEC covers the name, and one covers the wildcard at its closest
+        # encloser, the longest name both the name and that record's ends sit under.
+        def enclosing(r):
+            if not covers(order(r["name"]), order(r["value"]["next"]), order(name)):
+                return None
+            types = r["value"]["types"]
+            if resolve.under(name, r["name"].lower()) and resolve.NS in types and resolve.SOA not in types:
+                return None  # the name is in a child zone, which this zone cannot speak for
+            ends = [order(r["name"]), order(r["value"]["next"])]
+            return max((e[:i] for e in ends for i in range(min(len(e), len(order(name)) - 1) + 1) if order(name)[:i] == e[:i]), key=len)
+        for r in nsec:
+            encloser = enclosing(r)
+            if encloser is None:
+                continue
+            star = order("*." + ".".join(label.decode("latin-1") for label in reversed(encloser)))
+            wild = next((w for w in nsec if covers(order(w["name"]), order(w["value"]["next"]), star)), None)
+            if wild:
+                checked(r)
+                checked(wild)
+                return f"{name} does not exist: {zone or '.'} proves it with NSEC"
+        return None
+    owners, salt, iterations = hashed(zone, proof)
+    if not owners:
+        return None
+    exact = owners.get(nsec3_hash(name, salt, iterations))
+    if exact:
+        return f"{name} has no {kind} records: {zone or '.'} proves it with NSEC3" if absent(checked(exact)["value"]["types"]) else None
+    found = closest_encloser(name, zone, owners, salt, iterations)
+    if not found:
+        return None
+    encloser, match, cover = found
+    star = nsec3_hash("*." + encloser if encloser else "*", salt, iterations)
+    wild = next((r for owner, r in owners.items() if covers(owner, r["value"]["next"], star)), None)
+    if not wild:
+        return None
+    for r in (match, cover, wild):
+        checked(r)
+    if cover["value"]["flags"] & 1:
+        # Opt-out: an unsigned delegation could sit there, so the name's absence is not proven.
+        raise Insecure(f"{name} falls in an opt-out span of {zone or '.'}, where unsigned names are not listed")
+    return f"{name} does not exist: {zone or '.'} proves it with NSEC3"
 
 
 def zone_keys(zone, fetch, now, chain, seen):
@@ -303,6 +389,22 @@ def zone_of(name, fetch):
     return ""
 
 
+def denial(name, qtype, proof, sigs, fetch, now, chain, seen):
+    # The proven words for an empty answer; raises Bogus if the proof fails or never came.
+    sigs = [s for s in sigs if s["rrsig"]["covered"] in (resolve.NSEC, resolve.NSEC3)]
+    if not sigs:
+        apex = zone_of(name, fetch)
+        zone_keys(apex, fetch, now, chain, seen)  # raises Insecure, with the proof, if apex is unsigned
+        raise Bogus(f"{name} {resolve.TYPE_NAMES.get(qtype, qtype)} came back empty with no signed proof, but its zone {apex or '.'} is signed")
+    zone = sigs[0]["rrsig"]["signer"]
+    if not resolve.under(name, zone):
+        raise Bogus(f"the denial for {name} is signed by {zone or '.'}, which is not above it")
+    how = proves_missing(name, qtype, zone, proof, sigs, zone_keys(zone, fetch, now, chain, seen), now)
+    if not how:
+        raise Bogus(f"nothing {zone or '.'} signed proves {name} has no {resolve.TYPE_NAMES.get(qtype, qtype)} records")
+    return how
+
+
 def validate(name, qtype, fetch=lookup, now=None):
     # The answer to name/qtype with how it was proven, following CNAMEs (each one signed too).
     # Raises Bogus for a forgery or a broken chain and Insecure for an answer no one signed.
@@ -315,7 +417,7 @@ def validate(name, qtype, fetch=lookup, now=None):
             alias, alias_sigs = fetch(name, resolve.CNAME)
             alias = [r for r in alias if r["name"].lower() == name and r["type"] == resolve.CNAME]
             if not alias:
-                raise Insecure(f"{name} has no {resolve.TYPE_NAMES.get(qtype, qtype)} records (a denial, which is not checked)")
+                return [], chain + [denial(name, qtype, records, sigs, fetch, now, chain, seen)]
             here, sigs, qtype_here = alias, alias_sigs, resolve.CNAME
         else:
             qtype_here = qtype

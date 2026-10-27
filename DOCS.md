@@ -275,16 +275,15 @@ carry the parent's valid signature. A missing DS with no such proof is bogus.
 The same check runs when an answer arrives unsigned: its zone's keys are
 looked up, and only a proven missing DS makes it insecure. NSEC3 with more
 than 150 iterations is called insecure, as RFC 9276 allows, rather than spent
-time on. The proofs that come with NODATA and NXDOMAIN answers themselves are
-still not checked.
+time on. The proofs that come with empty answers are checked too; see below.
 
 The parser keeps them now: a reply with no answer and no referral raises
 `NoData`, a `LookupError` that carries the authority section, where the NSEC
 or NSEC3 records and their signatures are. The hash is checked against RFC
 5155's own example, `example` with salt `aabbccdd` and 12 iterations. The
 test records `google.se` (NSEC), `google.nl` (NSEC3) and `github.com` (opt-out),
-and refuses five forged denials: the proof removed, `github.com`'s proof
-replayed for `cloudflare.com`, and the signatures taken off the NSEC3, the
+and refuses six forged denials: the proof removed, `github.com`'s proof
+replayed for `cloudflare.com`, a missing `nl` name passed off as a zone, and the signatures taken off the NSEC3, the
 covering opt-out NSEC3 and the NSEC. Six breakages fail it: hashing the
 encloser instead of the next closer name, hashing the name's text instead of
 its wire form, not checking the covering record's signature, not checking the
@@ -292,6 +291,55 @@ NSEC's, accepting a missing DS with no proof, and not tracing an unsigned
 answer to its zone. Two of those first passed, because the tests that should
 have caught them failed earlier for another reason; the tests now strip one
 signature at a time.
+
+### Proving an answer is empty
+
+An empty answer is the last thing an attacker could forge freely: drop a
+signed name's records, say "no such name", and a validator that only checks
+records that are there has nothing to check. So an empty answer now needs the
+same kind of proof, signed by the zone the name is in. An NXDOMAIN reply
+raises `NoData` too, with its authority section, and the proof is one of four:
+
+- No such record, NSEC: an NSEC at the name itself whose types leave out the
+  type asked and CNAME. ietf.org and cloudflare.com make these up on the fly
+  even for names that do not exist, a single NSEC from the name to the name
+  with a zero byte in front, so they never have to say NXDOMAIN at all.
+- No such name, NSEC (RFC 4035 section 5.4): one NSEC whose span, in canonical
+  order, covers the name strictly inside, and one that covers `*.` plus the
+  closest encloser, so no wildcard could have answered either. The closest
+  encloser is the longest proper ancestor shared with the covering record's
+  ends.
+- No such record, NSEC3: an NSEC3 matching the name's hash, same rule.
+- No such name, NSEC3 (RFC 5155 section 7.2.2): the closest-encloser proof
+  `proves_no_ds` already used, plus a record covering the hash of the
+  wildcard at that encloser. If the covering record is opt-out, the name could
+  be an unsigned delegation in that span, so the answer is insecure, not
+  proven. Every `.com` name that does not exist is this case.
+
+An NSEC at a delegation, with NS but no SOA, is the parent speaking, and
+says nothing about the child's own types, so it only counts for a DS question.
+A covering NSEC whose owner is a delegation above the name is refused for the
+same reason. A denial with no NSEC signatures at all goes the way an unsigned
+answer does: insecure only if the zone is proven unsigned, bogus otherwise.
+The canonical order is the labels read from the right, each as lowercase
+bytes, which a tuple of bytes in Python compares correctly as it is.
+
+The test records six empty answers: no such name in `nlnetlabs.nl` (NSEC) and
+`nl` (NSEC3), no such record at `nlnetlabs.nl` (NSEC) and `nl` (NSEC3), an
+on-the-fly NSEC from `ietf.org`, and an opt-out span in `com`. It refuses
+fourteen forged denials: the wildcard NSEC removed, either NSEC's signature
+removed, the whole denial unsigned, a denial replayed for a name and type that
+exist (`nlnetlabs.nl` A, `www.ietf.org` A, `nl` NS), the denial replayed for
+the name at the end of its own NSEC's span, and each of `nl`'s three NSEC3
+records removed or stripped of its signature in turn. Nine breakages fail it:
+ignoring the type in the bitmap, not requiring either wildcard proof, not
+checking the cover's or the wildcard's signature for NSEC, the cover's for
+NSEC3, accepting an opt-out span, accepting an unsigned denial, and counting
+a span's ends as inside it. Three of those first passed. Two needed the
+signature tests, and the third showed the closest encloser could come out as
+the name itself; it is now held to a proper ancestor. One of the DS proof's
+breakages, not requiring the opt-out flag, also passed until a test passed off
+a name `nl` says does not exist as an unsigned zone.
 
 ### Ed25519
 
