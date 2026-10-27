@@ -364,7 +364,7 @@ makes it.
 
 Online signers such as Route 53 (`herokuapp.com`) sign each expanded answer
 for its own name, with the full label count, and need no proof. Of about 100
-signed zones tried, only `dnsviz.net` had a wildcard signed ahead of time, so
+zones tried, signed and not, only `dnsviz.net` had a wildcard signed ahead of time, so
 the test records its answers for `zq9x-wild.dnsviz.net` and
 `a.b.zq9x.dnsviz.net`, and refuses four forgeries: the NSEC removed, its
 signature removed, and the wildcard replayed for `www.dnsviz.net` and
