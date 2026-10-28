@@ -2,6 +2,7 @@
 # tampers with them; the last check asks the real servers. DOCS.md has how the file was made.
 import base64
 import copy
+import hashlib
 import json
 import os
 import struct
@@ -291,6 +292,76 @@ for why, answers, name, words in forged:
     result, reason = outcome(name, resolve.A, answers)
     assert result == "bogus" and words in reason, (why, result, reason)
 print(f"two wildcard answers proven; {len(forged)} forged ones refused, among them the wildcard replayed over a real name")
+
+# No live zone was found that proves a wildcard with NSEC3, so this is RFC 5155 appendix B.4's reply, record for
+# record. Its RSA/SHA-1 signatures are retired, so the test signs it again with its own Ed25519 key.
+SECRET = hashlib.sha512(b"rfc5155 b.4").digest()
+SCALAR = int.from_bytes(SECRET[:32], "little") & (2 ** 254 - 8) | 2 ** 254
+point_bytes = lambda p: (p[1] | (p[0] & 1) << 255).to_bytes(32, "little")
+PUBLIC = point_bytes(dnssec.ed_times(SCALAR, dnssec.ED_BASE))
+INCEPTION, EXPIRATION = 1129852800, 1429574399  # 20051021000000 and 20150420235959, as in the RFC
+
+
+def ed_sign(data):
+    # RFC 8032 section 5.1.6, the other half of what dnssec.ed25519_ok checks.
+    r = int.from_bytes(hashlib.sha512(SECRET[32:] + data).digest(), "little") % dnssec.EL
+    big_r = point_bytes(dnssec.ed_times(r, dnssec.ED_BASE))
+    h = int.from_bytes(hashlib.sha512(big_r + PUBLIC + data).digest(), "little") % dnssec.EL
+    return big_r + ((r + h * SCALAR) % dnssec.EL).to_bytes(32, "little")
+
+
+def rfc_reply(nsec3_flags, qname="a.z.w.example"):
+    # The answer is signed over its unexpanded owner, "*.w.example", spelled out here rather than taken from dnssec.
+    rr = lambda name, rtype, rdata: resolve.name_wire(name) + struct.pack("!HHIH", rtype, 1, 3600, len(rdata)) + rdata
+    def signed(name, rtype, labels, rdata, over):
+        head = struct.pack("!HBBIIIH", rtype, 15, labels, 3600, EXPIRATION, INCEPTION, rfc_tag) + resolve.name_wire("example")
+        return rr(name, resolve.RRSIG, head + ed_sign(head + rr(over, rtype, rdata)))
+    key = struct.pack("!HBB", 256, 3, 15) + PUBLIC
+    rfc_tag = dnssec.key_tag({"wire": key})
+    mx = struct.pack("!H", 1) + resolve.name_wire("ai.example")
+    cover = "q04jkcevqvmu85r014c7dkba38o0ji5r.example"
+    # NSEC3 1 1 12 aabbccdd r53bq7cc2uvmubfu5ocmm6pers9tk9en A RRSIG: types 1 and 46 in window 0.
+    nsec3 = (struct.pack("!BBHB", 1, nsec3_flags, 12, 4) + bytes.fromhex("aabbccdd") + b"\x14"
+             + base64.b32hexdecode("R53BQ7CC2UVMUBFU5OCMM6PERS9TK9EN") + bytes([0, 6, 0x40, 0, 0, 0, 0, 2]))
+    answer = [rr(qname, resolve.MX, mx), signed(qname, resolve.MX, 2, mx, "*.w.example")]
+    authority = [rr(cover, resolve.NSEC3, nsec3), signed(cover, resolve.NSEC3, 2, nsec3, cover)]
+    message = struct.pack("!HHHHHH", 0, 0x8400, 0, 2, 2, 1) + b"".join(answer + authority) + rr("example", resolve.DNSKEY, key)
+    return resolve.parse(message)
+
+
+def rfc_outcome(reply, qname="a.z.w.example", now=1300000000):
+    keys = reply["additional"]
+    proof = [r for r in reply["authority"] if r["type"] != resolve.RRSIG]
+    sigs = [r for r in reply["authority"] if r["type"] == resolve.RRSIG]
+    dnssec.verify(reply["answers"][:1], reply["answers"][1:], keys, "example", now)
+    try:
+        return dnssec.proves_expansion(qname, reply["answers"][1]["rrsig"]["labels"], "example", proof, sigs, keys, now) or "no proof"
+    except (dnssec.Bogus, dnssec.Insecure) as e:
+        return f"{type(e).__name__}: {e}"
+
+
+reply = rfc_reply(0)
+assert reply["authority"][0]["value"]["types"] == {resolve.A, resolve.RRSIG}
+assert base64.b32hexencode(dnssec.nsec3_hash("z.w.example", bytes.fromhex("aabbccdd"), 12)).decode().lower() == "qlu7gtfaeh0ek0c05ksfhdpbcgglbe03"
+said = rfc_outcome(reply)
+assert said == "a.z.w.example is from the wildcard *.w.example: example proves no closer name with NSEC3", said
+# As printed, the NSEC3 has opt-out set, and section 12.2 warns that an opt-out span lets signed wildcard expansions be forged.
+said = rfc_outcome(rfc_reply(1))
+assert said.startswith("Insecure:") and "opt-out" in said, said
+forged = []
+# x.w.example exists (appendix A), so its hash falls outside the span; so does a name under it.
+for victim in ("x.w.example", "a.x.w.example"):
+    forged.append((f"the wildcard replayed for {victim}", rfc_reply(0, victim), victim, "no proof"))
+broken = rfc_reply(0)
+broken["authority"][1]["rrsig"]["signature"] = bytes(64)
+forged.append(("the NSEC3's signature zeroed", broken, "a.z.w.example", "Bogus: q04jkcevqvmu85r014c7dkba38o0ji5r.example NSEC3: no key"))
+gone = rfc_reply(0)
+gone["authority"] = gone["authority"][1:]
+forged.append(("the NSEC3 removed", gone, "a.z.w.example", "no proof"))
+for why, reply, name, words in forged:
+    said = rfc_outcome(reply, name)
+    assert said.startswith(words), (why, said)
+print(f"RFC 5155's NSEC3 wildcard answer proven, insecure as printed with opt-out; {len(forged)} forgeries of it refused")
 
 # The real thing, from the root down, today.
 resolve.known = {"": resolve.known[""]}

@@ -370,8 +370,27 @@ the test records its answers for `zq9x-wild.dnsviz.net` and
 signature removed, and the wildcard replayed for `www.dnsviz.net` and
 `a.www.dnsviz.net`. Four breakages fail it: not checking wildcards, checking
 the full name, not checking the NSEC's signature, and misreading the labels
-count. The NSEC3 form is written to the same rule but no live zone found
-uses it, so no recording exercises it yet.
+count.
+
+No live zone found proves a wildcard with NSEC3 either (another 24 tried,
+from `nic.cz` to `desec.io`, none with a wildcard at all), so the NSEC3 form
+is tested on RFC 5155's own example, appendix B.4: `a.z.w.example MX` from
+`*.w.example`, with the NSEC3 at `q04jk...` covering the hash of the next
+closer name `z.w.example`. The records are the RFC's, built into a real reply
+and read by `resolve.parse`, but the RFC signed them with RSA/SHA-1, which
+resolve does not accept, so the test signs them again with an Ed25519 key of
+its own. It spells out the signed owner `*.w.example` itself rather than
+using `signed_data`, so a mistake there cannot be signed and checked the same
+way. The RFC's hash of `z.w.example` is checked too.
+
+As printed, that NSEC3 has the opt-out flag set, and resolve calls the
+answer insecure. That follows the RFC's own section 12.2: inside an opt-out
+span, names are not signed, so "signed wildcard expansions" can be inserted.
+With opt-out cleared it is secure. Four forgeries are refused: the wildcard
+replayed for `x.w.example`, which exists, and for a name under it; the NSEC3's
+signature zeroed; and the NSEC3 removed. Four breakages fail it: the NSEC3
+checked against the full name, its signature not checked, opt-out taken as
+secure, and any NSEC3 taken as the cover.
 
 ### Ed25519
 
