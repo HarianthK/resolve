@@ -11,7 +11,7 @@ import resolve
 # (key tag, algorithm, digest type) -> SHA-256 of the key. Everything else is checked against these.
 ANCHORS = {(20326, 8, 2): bytes.fromhex("E06D44B80B8F1D39A95C0B0D7C65D08458E880409BBC683457104237C7F8EC8D"),
            (38696, 8, 2): bytes.fromhex("683D2D0ACB8C9B712A1948B27F741219298D0A450D612C483AF444A4C0FB2B16")}
-ALGORITHMS = {8: "RSA/SHA-256", 10: "RSA/SHA-512", 13: "ECDSA P-256/SHA-256", 15: "Ed25519"}
+ALGORITHMS = {8: "RSA/SHA-256", 10: "RSA/SHA-512", 13: "ECDSA P-256/SHA-256", 14: "ECDSA P-384/SHA-384", 15: "Ed25519"}
 
 # NIST P-256: y^2 = x^3 - 3x + b over the integers mod P, with base point G of prime order N.
 P = 0xFFFFFFFF00000001000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFF
@@ -19,6 +19,14 @@ B = 0x5AC635D8AA3A93E7B3EBBD55769886BC651D06B0CC53B0F63BCE3C3E27D2604B
 N = 0xFFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551
 G = (0x6B17D1F2E12C4247F8BCE6E563A440F277037D812DEB33A0F4A13945D898C296,
      0x4FE342E2FE1A7F9B8EE7EB4A7C0F9E162BCE33576B315ECECBB6406837BF51F5)
+# NIST P-384, the same shape of curve with 48-byte numbers, for algorithm 14.
+P384 = 2 ** 384 - 2 ** 128 - 2 ** 96 + 2 ** 32 - 1
+B384 = 0xB3312FA7E23EE7E4988E056BE3F82D19181D9C6EFE8141120314088F5013875AC656398D8A2ED19D2A85C8EDD3EC2AEF
+N384 = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC7634D81F4372DDF581A0DB248B0A77AECEC196ACCC52973
+G384 = (0xAA87CA22BE8B05378EB1C71EF320AD746E1D3B628BA79B9859F741E082542A385502F25DBF55296C3A545E3872760AB7,
+        0x3617DE4A96262C6F5D9E98BF9292DC29F8F41DBD289A147CE9DA3113B5F0B8C00A60B1CE1D7E819D7A431D7C90EA0E5F)
+# Algorithm -> (modulus, b, order, base point, hash).
+CURVES = {13: (P, B, N, G, "sha256"), 14: (P384, B384, N384, G384, "sha384")}
 # PKCS #1 v1.5 puts the hash inside this DER prefix, which names the hash function.
 DIGEST_INFO = {"sha256": bytes.fromhex("3031300d060960864801650304020105000420"),
                "sha512": bytes.fromhex("3051300d060960864801650304020305000440")}
@@ -32,12 +40,12 @@ class Insecure(Exception):
     """Nothing says this answer should be signed, so it can be neither trusted nor called forged."""
 
 
-def on_curve(point):
+def on_curve(point, P=P, B=B):
     x, y = point
     return 0 <= x < P and 0 <= y < P and (y * y - x * x * x + 3 * x - B) % P == 0
 
 
-def add(p1, p2):
+def add(p1, p2, P=P):
     # Adding points on the curve; None is the point at infinity, the identity.
     if p1 is None or p2 is None:
         return p1 or p2
@@ -49,26 +57,28 @@ def add(p1, p2):
     return x3, (slope * (x1 - x3) - y1) % P
 
 
-def times(k, point):
+def times(k, point, P=P):
     # k copies of point added up, by doubling and adding along k's bits.
     total = None
     while k:
         if k & 1:
-            total = add(total, point)
-        point, k = add(point, point), k >> 1
+            total = add(total, point, P)
+        point, k = add(point, point, P), k >> 1
     return total
 
 
-def ecdsa_ok(key, signature, data):
-    # RFC 6605: the key is x then y, the signature r then s, 32 bytes each.
-    if len(key) != 64 or len(signature) != 64:
+def ecdsa_ok(key, signature, data, algorithm=13):
+    # RFC 6605: the key is x then y, the signature r then s, 32 bytes each for P-256 and 48 for P-384.
+    P, B, N, G, hash_name = CURVES[algorithm]
+    size = (P.bit_length() + 7) // 8
+    if len(key) != 2 * size or len(signature) != 2 * size:
         return False
-    q = (int.from_bytes(key[:32], "big"), int.from_bytes(key[32:], "big"))
-    r, s = int.from_bytes(signature[:32], "big"), int.from_bytes(signature[32:], "big")
-    if not on_curve(q) or not (0 < r < N and 0 < s < N):
+    q = (int.from_bytes(key[:size], "big"), int.from_bytes(key[size:], "big"))
+    r, s = int.from_bytes(signature[:size], "big"), int.from_bytes(signature[size:], "big")
+    if not on_curve(q, P, B) or not (0 < r < N and 0 < s < N):
         return False
-    e, w = int.from_bytes(hashlib.sha256(data).digest(), "big"), pow(s, -1, N)
-    point = add(times(e * w % N, G), times(r * w % N, q))
+    e, w = int.from_bytes(hashlib.new(hash_name, data).digest(), "big"), pow(s, -1, N)
+    point = add(times(e * w % N, G, P), times(r * w % N, q, P), P)
     return point is not None and point[0] % N == r
 
 
@@ -182,7 +192,7 @@ def verify(rrset, sigs, keys, zone, now):
                 k = key["wire"]
                 if key_tag(key) != r["key_tag"] or k[3] != r["algorithm"] or not k[0] & 1:
                     continue  # flags bit 7 (the high byte's low bit) marks a zone key
-                if r["algorithm"] == 13 and ecdsa_ok(k[4:], r["signature"], data):
+                if r["algorithm"] in CURVES and ecdsa_ok(k[4:], r["signature"], data, r["algorithm"]):
                     return key
                 if r["algorithm"] == 15 and ed25519_ok(k[4:], r["signature"], data):
                     return key

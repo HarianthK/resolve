@@ -241,8 +241,8 @@ attacker can also strip signatures from a signed answer. So an unsigned answer
 is only insecure if its zone (the nearest name above it with an SOA) has no
 DS; in a signed zone it is bogus.
 
-ECDSA P-384, Ed448 and the old SHA-1 algorithms count as insecure, as RFC
-4035 says to treat algorithms a validator does not know.
+Ed448 and the old SHA-1 algorithms count as insecure, as RFC 4035 says to
+treat algorithms a validator does not know.
 
 ### Proving a DS is not there
 
@@ -409,6 +409,25 @@ order, the sign of d flipped). The third, inverting the sign bit when
 decoding, changes nothing at all, and that is right: it negates every point
 the same way, the base point included, and negating both sides of
 S*B = R + h*A leaves it true. So it is not a bug a test could see.
+
+### ECDSA P-384
+
+Algorithm 14 is the same ECDSA as 13 on a bigger curve, P-384, with SHA-384 as
+the hash and 48-byte numbers where P-256 has 32. Both curves have a = -3, so
+the doubling formula is the same, and the curve became a parameter: modulus,
+b, order, base point and hash, picked by the algorithm number. The constants
+were checked by putting the base point on the curve and multiplying it by the
+order, which must give the point at infinity; a wrong digit fails both.
+
+No live zone signed with P-384 turned up, so the test is RFC 6605 section 6.2's
+example: its key, its DS (digest type 4, SHA-384) and its signature over
+`www.example.net` A. ECDSA signatures are randomised, but the RFC's is a real
+one made by a real signer, so verifying it says the arithmetic is right. A
+flipped bit in r or s is bogus, a flipped bit in the key no longer matches the
+DS, and the signature is refused a day after it expired. Eight breakages
+(the old `== 13` dispatch, SHA-256 as the hash, 32-byte numbers, each of
+`on_curve`, `add` and `times` falling back to P-256's modulus, one digit of the
+base point, and 14 missing from the known algorithms) all fail it.
 
 ### Two bugs it found in the resolver
 

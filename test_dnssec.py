@@ -1,6 +1,7 @@
 # Run: python test_dnssec.py. Replays real signed answers recorded in test_dnssec.json, then
 # tampers with them; the last check asks the real servers. DOCS.md has how the file was made.
 import base64
+import calendar
 import copy
 import hashlib
 import json
@@ -369,6 +370,60 @@ resolve.answers.clear()
 records, chain = dnssec.validate("cloudflare.com", resolve.A)
 assert records and chain[-1].startswith("cloudflare.com A signed by cloudflare.com"), chain
 print("cloudflare.com proven live:", " / ".join(chain))
+# No live zone signed with P-384 was found, so this is RFC 6605 section 6.2's example: its key, the DS
+# for it with a SHA-384 digest, and its signature over www.example.net A, record for record.
+def p384_reply(key_b64, sig_b64):
+    rr = lambda name, rtype, rdata: resolve.name_wire(name) + struct.pack("!HHIH", rtype, 1, 3600, len(rdata)) + rdata
+    key = struct.pack("!HBB", 257, 3, 14) + base64.b64decode(key_b64)
+    ds = struct.pack("!HBB", 10771, 14, 4) + bytes.fromhex(
+        "72d7b62976ce06438e9c0bf319013cf801f09ecc84b8d7e9495f27e305c6a9b0563a9b5f4d288405c3008a946df983d6")
+    stamp = lambda text: calendar.timegm(time.strptime(text, "%Y%m%d%H%M%S"))
+    head = struct.pack("!HBBIIIH", resolve.A, 14, 3, 3600, stamp("20100909102025"), stamp("20100812102025"), 10771)
+    sig = head + resolve.name_wire("example.net") + base64.b64decode(sig_b64)
+    records = [rr("www.example.net", resolve.A, bytes([192, 0, 2, 1])), rr("www.example.net", resolve.RRSIG, sig),
+               rr("example.net", resolve.DNSKEY, key), rr("example.net", resolve.DS, ds)]
+    return resolve.parse(struct.pack("!HHHHHH", 0, 0x8400, 0, 4, 0, 0) + b"".join(records))["answers"]
+
+
+P384_KEY = "xKYaNhWdGOfJ+nPrL8/arkwf2EY3MDJ+SErKivBVSum1w/egsXvSADtNJhyem5RCOpgQ6K8X1DRSEkrbYQ+OB+v8/uX45NBwY8rp65F6Glur8I/mlVNgF6W/qTI37m40"
+P384_SIG = "/L5hDKIvGDyI1fcARX3z65qrmPsVz73QD1Mr5CEqOiLP95hxQouuroGCeZOvzFaxsT8Glr74hbavRKayJNuydCuzWTSSPdz7wnqXL5bdcJzusdnI0RSMROxxwGipWcJm"
+AUGUST_2010 = calendar.timegm((2010, 8, 20, 0, 0, 0))
+
+
+def p384_outcome(key_b64=P384_KEY, sig_b64=P384_SIG, now=AUGUST_2010):
+    a, sig, key, ds = p384_reply(key_b64, sig_b64)
+    if not dnssec.matches_ds(key, "example.net", ds):
+        return "no DS"
+    try:
+        return "secure" if dnssec.verify([a], [sig], [key], "example.net", now) == key else "wrong key"
+    except dnssec.Bogus as e:
+        return "bogus: " + str(e)
+
+
+assert dnssec.key_tag(p384_reply(P384_KEY, P384_SIG)[2]) == 10771
+assert p384_outcome() == "secure", p384_outcome()
+# One bit changed in the signature's r, its s, or the key's x or y, and the answer is refused.
+def flipped(text, at):
+    raw = bytearray(base64.b64decode(text))
+    raw[at] ^= 1
+    return base64.b64encode(bytes(raw)).decode()
+for at in (5, 60):
+    assert p384_outcome(sig_b64=flipped(P384_SIG, at)).startswith("bogus: www.example.net A: no key 10771"), at
+    assert p384_outcome(key_b64=flipped(P384_KEY, at)) == "no DS", at
+# With the DS out of the way, a changed key no longer verifies the RFC's signature either.
+a, sig, key, ds = p384_reply(flipped(P384_KEY, 60), P384_SIG)
+sig["rrsig"]["key_tag"] = dnssec.key_tag(key)
+sig["wire"] = sig["wire"][:16] + struct.pack("!H", dnssec.key_tag(key)) + sig["wire"][18:]
+try:
+    dnssec.verify([a], [sig], [key], "example.net", AUGUST_2010)
+    raise AssertionError("a changed P-384 key verified the RFC's signature")
+except dnssec.Bogus:
+    pass
+assert p384_outcome(now=calendar.timegm((2010, 9, 10, 0, 0, 0))).startswith("bogus"), "expired the day after 20100909"
+# The same signature checked as P-256 is the wrong size, so it fails instead of passing by accident.
+assert not dnssec.ecdsa_ok(base64.b64decode(P384_KEY), base64.b64decode(P384_SIG), b"x", 13)
+print("RFC 6605's P-384 example verifies, its DS matches with SHA-384, and five changes to it are refused")
+
 # ed25519.nl, a test zone NLnet Labs keeps signed with Ed25519 only.
 records, chain = dnssec.validate("ed25519.nl", resolve.A)
 assert "(Ed25519), vouched for by a DS in nl" in chain[-2], chain
