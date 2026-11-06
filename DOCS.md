@@ -466,3 +466,65 @@ loop was wrong: two breakages failed with the previous breakage's message,
 because a change of the same size, restored within the same second, left
 Python's cached bytecode looking current. The loop now deletes `__pycache__`
 and runs `python -B`.
+
+## Answering other programs
+
+`--serve` turns the resolver into a server. A stub client, the kind built into
+every operating system, sends one question with the RD bit set ("recursion
+desired"), and the server does the whole walk from the root and sends back one
+reply. The parsing was all there already; the new part is writing records back
+out. Each parsed record already kept its data in canonical form, with any names
+inside spelled out in full for DNSSEC, and that form is also legal on the wire,
+so a reply is just the question echoed back and the records written out again,
+uncompressed.
+
+Five details took more care than the packing:
+
+- The question goes back exactly as it was asked, letter case included. Some
+  clients send names in random case and reject a reply that doesn't match
+  (the "0x20" trick against forged replies).
+- `resolve()` follows a CNAME itself and returns only the final records, so
+  the reply puts one CNAME in front, from the name asked to the name answered.
+  A stub client that sees an answer for a name it never asked about throws it
+  away. A chain of several aliases is collapsed into one, with the shortest
+  TTL in the chain.
+- No such name (NXDOMAIN), no records of that type (NODATA, rcode 0 with no
+  answers), and no server answering (SERVFAIL) are three different replies.
+  `NoData` now carries the rcode so these stay apart. The first two carry the
+  zone's SOA record, so the client knows how long it may remember the miss. A
+  miss served from the cache goes out without one, because only its expiry
+  time is kept.
+- Plain UDP replies stop at 512 bytes. A client that sends an OPT record says
+  how much it can take. Anything bigger goes back as the question alone with
+  TC set, and the client asks again over TCP, which the server also listens on.
+- A packet with QR set is a reply, not a question. It gets no answer, so two
+  servers pointed at each other can't bounce packets forever.
+
+It listens on 127.0.0.1 only. An open resolver on a public address gets used
+to amplify floods of traffic at other people. One lock serves one lookup at a
+time, because the caches are plain dicts shared by every request.
+
+### Testing it
+
+The offline test serves from a scripted network, and every reply is written
+out by hand, byte by byte, rather than rebuilt with the server's own encoder.
+It covers:
+
+- an answer to a mixed-case question
+- an alias
+- NXDOMAIN, fresh and then from the cache
+- NODATA
+- a big TXT record three ways: truncated over plain UDP, whole over EDNS, and
+  twice on one TCP connection
+- SERVFAIL
+- an opcode it doesn't implement, a name cut off partway, and a reply sent to
+  it as if it were a question
+
+Thirteen breakages each fail it. The last one written, a cached miss served as
+SERVFAIL, at first passed; that is why the second NXDOMAIN check exists.
+
+Live, dnspython (installed outside the repo) asked it for en.wikipedia.org,
+gmail.com MX, a missing name, google.com TXT (truncated, then over TCP) and
+cloudflare.com AAAA, and read every reply correctly. Windows' `nslookup`
+can't be used as the client: given `-port=5300`, it sent nothing to that
+port.

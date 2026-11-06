@@ -53,6 +53,8 @@ so it goes again, this time starting from the .org server it already knows.
 - Bailiwick checks: a server is believed only about its own part of the tree,
   so a reply cannot slip in an answer for another name, a referral sideways or
   back up, or an address for a name server outside its zone.
+- A server mode, `--serve [PORT]`: other programs on this machine can use it
+  as their DNS server, over UDP and TCP, with its cache shared between them.
 
 ## Why
 
@@ -63,6 +65,7 @@ one afternoon. [DOCS.md](DOCS.md) is what I learned.
 ## Running it
 
     python resolve.py NAME [A|AAAA|NS|MX|TXT|SRV|PTR|CAA|DS|DNSKEY] [-v] [--dnssec]
+    python resolve.py --serve 5300      # then: dig @127.0.0.1 -p 5300 example.com
     python test_resolve.py
     python test_dnssec.py
 

@@ -5,8 +5,10 @@ import ipaddress
 import math
 import random
 import socket
+import socketserver
 import struct
 import sys
+import threading
 import time
 
 ROOTS = {"a": "198.41.0.4", "b": "170.247.170.2", "c": "192.33.4.12", "d": "199.7.91.13", "e": "192.203.230.10",
@@ -39,9 +41,9 @@ class Unreachable(LookupError):
 
 class NoData(LookupError):
     """No records of the type asked, or no such name; authority holds the reply's proof."""
-    def __init__(self, message, authority):
+    def __init__(self, message, authority, rcode=0):
         super().__init__(message)
-        self.authority = authority
+        self.authority, self.rcode = authority, rcode
 
 
 def type_bitmap(data):
@@ -252,7 +254,7 @@ def resolve_fresh(name, qtype=A, verbose=False, depth=0, aliases=()):
     now = clock()
     if missing.get(name, 0) > now:
         if verbose: print(f"  {name} does not exist, from the cache, {int(missing[name] - now)}s left")
-        raise LookupError(f"{name} does not exist (NXDOMAIN, cached)")
+        raise NoData(f"{name} does not exist (NXDOMAIN, cached)", [], 3)
     key = (name, qtype)
     if key in answers and answers[key][0] > now:
         expires, records = answers[key]
@@ -285,7 +287,7 @@ def resolve_fresh(name, qtype=A, verbose=False, depth=0, aliases=()):
             # TTL and its minimum field is how long the name may be remembered as missing.
             soa = next((r for r in reply["authority"] if r["type"] == SOA), None)
             if soa: missing[name] = clock() + min(soa["ttl"], soa["minimum"])
-            raise NoData(f"{name} does not exist (NXDOMAIN)", reply["authority"])
+            raise NoData(f"{name} does not exist (NXDOMAIN)", reply["authority"], 3)
         # Only records about the name asked are believed; anything else in the reply could be planted.
         about = [r for r in reply["answers"] if r["name"].lower() == name]
         wanted = [r for r in about if r["type"] == qtype]
@@ -300,7 +302,7 @@ def resolve_fresh(name, qtype=A, verbose=False, depth=0, aliases=()):
             # The alias is only good for as long as both it and what it points at are.
             return remember_answer(key, [dict(r, ttl=min(r["ttl"], cname["ttl"])) for r in target])
         referral = [r for r in reply["authority"] if r["type"] == NS]
-        if not referral: raise NoData(f"{server} had no answer and no referral for {name}", reply["authority"])
+        if not referral: raise NoData(f"{server} had no answer and no referral for {name}", reply["authority"], reply["rcode"])
         below = referral[0]["name"].lower()
         # Bailiwick: a server may only hand down a zone between its own and the name, never sideways or up.
         if below == zone or not under(below, zone) or not under(name, below):
@@ -312,9 +314,89 @@ def resolve_fresh(name, qtype=A, verbose=False, depth=0, aliases=()):
         servers = glue or addresses_of(ns_names, verbose, depth)
         known[zone] = (clock() + min(r["ttl"] for r in referral), servers)
 
+
+def record_wire(r):
+    return name_wire(r["name"]) + struct.pack("!HHIH", r["type"], 1, r["ttl"], len(r["wire"])) + r["wire"]
+
+
+def respond(query, udp=True, verbose=False):
+    # One client question answered by recursion, as the reply bytes; None for a packet to ignore.
+    if len(query) < 12: return None
+    ident, flags, qd, _, _, ar = struct.unpack("!HHHHHH", query[:12])
+    if flags & 0x8000: return None  # a reply, not a question: answering it could start a loop
+    header = lambda rcode, counts=(0, 0, 0, 0): struct.pack("!HHHHHH", ident, 0x8080 | flags & 0x7900 | rcode, *counts)
+    if flags & 0x7800 or qd != 1: return header(4)  # NOTIMP: only plain queries, one question each
+    try:
+        name, pos = read_name(query, 12)
+        qtype = struct.unpack("!H", query[pos:pos + 2])[0]
+        question = query[12:pos + 4]
+    except (IndexError, UnicodeDecodeError, struct.error):
+        return header(FORMERR)
+    # A client that sends an OPT record says how big a UDP reply it takes; without one, 512.
+    opt = query[pos + 4:pos + 9]
+    edns = ar and opt[:3] == b"\0\0" + bytes([OPT]) and len(opt) == 5
+    limit = max(512, struct.unpack("!H", opt[3:])[0]) if edns else 512
+    rcode, answer, authority = 0, [], []
+    try:
+        answer = resolve(name, qtype, verbose)
+    except NoData as e:
+        rcode, authority = (e.rcode, [r for r in e.authority if r["type"] == SOA]) if e.rcode in (0, 3) else (2, [])
+    except (LookupError, RuntimeError, OSError, ValueError):
+        rcode = 2  # SERVFAIL: no server answered, or none could be believed
+    # resolve follows aliases and returns only the target's records, so one CNAME stands for the chain.
+    if answer and answer[0]["name"].lower() != name.rstrip(".").lower():
+        answer = [{"name": name, "type": CNAME, "ttl": min(r["ttl"] for r in answer), "wire": name_wire(answer[0]["name"])}] + answer
+    if verbose: print(f"{name} {TYPE_NAMES.get(qtype, qtype)} -> rcode {rcode}, {len(answer)} answers")
+    tail = b"\0" + struct.pack("!HHIH", OPT, EDNS_SIZE, 0, 0) if edns else b""
+    reply = header(rcode, (1, len(answer), len(authority), 1 if edns else 0)) + question + b"".join(map(record_wire, answer + authority)) + tail
+    if udp and len(reply) > limit:
+        # Too big: the question alone with TC set, and the client asks again over TCP.
+        reply = header(rcode | 0x200, (1, 0, 0, 1 if edns else 0)) + question + tail
+    return reply
+
+
+class _UDP(socketserver.BaseRequestHandler):
+    def handle(self):
+        query, sock = self.request
+        with self.server.lock: reply = respond(query, True, self.server.verbose)
+        if reply: sock.sendto(reply, self.client_address)
+
+
+class _TCP(socketserver.BaseRequestHandler):
+    def handle(self):
+        # Over TCP each message has a two-byte length in front, and one connection can carry several.
+        try:
+            while True:
+                query = _read_exactly(self.request, struct.unpack("!H", _read_exactly(self.request, 2))[0])
+                with self.server.lock: reply = respond(query, False, self.server.verbose)
+                if reply: self.request.sendall(struct.pack("!H", len(reply)) + reply)
+        except (ConnectionError, OSError):
+            pass
+
+
+def serve(port=5300, host="127.0.0.1", verbose=False):
+    # A recursive server on UDP and TCP, localhost only, since an open resolver gets abused.
+    # ponytail: one lock, one lookup at a time; per-name locks if many clients ever share it.
+    udp = socketserver.ThreadingUDPServer((host, port), _UDP)
+    tcp = socketserver.ThreadingTCPServer((host, udp.server_address[1]), _TCP)
+    lock = threading.Lock()
+    for s in (udp, tcp):
+        s.lock, s.verbose, s.daemon_threads = lock, verbose, True
+        threading.Thread(target=s.serve_forever, daemon=True).start()
+    return udp, tcp
+
+
 if __name__ == "__main__":
+    if "--serve" in sys.argv:
+        port = int(next((a for a in sys.argv[1:] if a.isdigit()), 5300))
+        serve(port, verbose="-v" in sys.argv)
+        print(f"answering DNS on 127.0.0.1 port {port}, UDP and TCP; try: dig @127.0.0.1 -p {port} example.com")
+        try:
+            while True: time.sleep(1)
+        except KeyboardInterrupt:
+            sys.exit()
     args = [a for a in sys.argv[1:] if not a.startswith("-")]
-    if not args: sys.exit("usage: python resolve.py NAME [A|AAAA|NS|MX|TXT|SRV|PTR|CAA|DS|DNSKEY] [-v] [--dnssec], or -x ADDRESS")
+    if not args: sys.exit("usage: python resolve.py NAME [A|AAAA|NS|MX|TXT|SRV|PTR|CAA|DS|DNSKEY] [-v] [--dnssec], or -x ADDRESS, or --serve [PORT]")
     qtype = {v: k for k, v in TYPE_NAMES.items()}.get(args[1].upper() if len(args) > 1 else "A", A)
     if "-x" in sys.argv:
         # A reverse lookup is a PTR question about the address written backwards under in-addr.arpa or ip6.arpa.

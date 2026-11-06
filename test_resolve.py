@@ -494,6 +494,101 @@ except ValueError:
 finally:
     sock.close()
 
+# Serving, offline: --serve answers stub clients over UDP and TCP from a scripted network,
+# and each reply must equal one written out by hand, byte for byte.
+EXAMPLE = b"\x07example\x03com\x00"
+SOA_WIRE = b"\x02ns" + EXAMPLE + b"\x04host" + EXAMPLE + struct.pack("!IIIII", 7, 3600, 600, 86400, 900)
+
+
+def served_ask(server, name, qtype=resolve.A, timeout=3, verbose=False):
+    empty = {"id": 0, "rcode": 0, "truncated": False, "answers": [], "authority": [], "additional": []}
+    if server in ROOT_IPS:
+        zone, ip = ("dead", "10.0.0.9") if name.endswith("dead") else ("com", "10.0.0.1")
+        return dict(empty, authority=[{"name": zone, "type": resolve.NS, "ttl": 172800, "value": "ns." + zone}],
+                    additional=[{"name": "ns." + zone, "type": resolve.A, "ttl": 172800, "value": ip}])
+    if server == "10.0.0.9": raise socket.timeout("timed out")
+    if server == "10.0.0.1":
+        return dict(empty, authority=[{"name": "example.com", "type": resolve.NS, "ttl": 3600, "value": "ns.example.com"}],
+                    additional=[{"name": "ns.example.com", "type": resolve.A, "ttl": 3600, "value": "10.0.0.2"}])
+    soa = {"name": "example.com", "type": resolve.SOA, "ttl": 900, "minimum": 900, "value": "", "wire": SOA_WIRE}
+    record = lambda rtype, ttl, wire, value="": {"name": name, "type": rtype, "ttl": ttl, "value": value, "wire": wire}
+    if name == "example.com": return dict(empty, answers=[record(resolve.A, 300, bytes([93, 184, 216, 34]))])
+    if name == "www.example.com": return dict(empty, answers=[record(resolve.CNAME, 60, b"", "example.com")])
+    if name == "big.example.com": return dict(empty, answers=[record(resolve.TXT, 300, (b"\xc8" + b"x" * 200) * 4)])
+    if name == "empty.example.com": return dict(empty, authority=[soa])
+    return dict(empty, rcode=3, authority=[soa])
+
+
+def query(ident, qname, qtype, flags=0x0100, edns=False):
+    return (struct.pack("!HHHHHH", ident, flags, 1, 0, 0, 1 if edns else 0) + qname + struct.pack("!HH", qtype, 1)
+            + (b"\0\0\x29\x04\xd0\0\0\0\0\0\0" if edns else b""))
+
+
+def ask_udp(packet):
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+        s.settimeout(1)
+        s.sendto(packet, ("127.0.0.1", port))
+        try: return s.recvfrom(4096)[0]
+        except socket.timeout: return None
+
+
+resolve.ask, resolve.clock = served_ask, (lambda: 9000.0)
+udp, tcp = resolve.serve(0)
+port = udp.server_address[1]
+try:
+    # The question comes back as asked, mixed case and all; the answer is in lower case.
+    q = EXAMPLE.replace(b"example", b"ExAmPle")
+    want = (struct.pack("!HHHHHH", 0xBEEF, 0x8180, 1, 1, 0, 0) + q + b"\0\1\0\1"
+            + EXAMPLE + b"\0\1\0\1\0\0\x01\x2c\0\x04" + bytes([93, 184, 216, 34]))
+    assert ask_udp(query(0xBEEF, q, resolve.A)) == want, ask_udp(query(0xBEEF, q, resolve.A))
+    # An alias: the CNAME first, then the address, both good for the alias's 60 seconds.
+    www = b"\x03www" + EXAMPLE
+    want = (struct.pack("!HHHHHH", 2, 0x8180, 1, 2, 0, 0) + www + b"\0\1\0\1"
+            + www + b"\0\5\0\1\0\0\0\x3c\0\x0d" + EXAMPLE
+            + EXAMPLE + b"\0\1\0\1\0\0\0\x3c\0\x04" + bytes([93, 184, 216, 34]))
+    assert ask_udp(query(2, www, resolve.A)) == want, ask_udp(query(2, www, resolve.A))
+    # No such name: NXDOMAIN with the zone's SOA, so the client knows how long to remember it.
+    nope = b"\x04nope" + EXAMPLE
+    soa_rr = EXAMPLE + b"\0\6\0\1\0\0\x03\x84" + struct.pack("!H", len(SOA_WIRE)) + SOA_WIRE
+    want = struct.pack("!HHHHHH", 3, 0x8183, 1, 0, 1, 0) + nope + b"\0\1\0\1" + soa_rr
+    assert ask_udp(query(3, nope, resolve.A)) == want, ask_udp(query(3, nope, resolve.A))
+    # Asked again, the miss comes from the cache: still NXDOMAIN, though the SOA is not kept.
+    assert ask_udp(query(3, nope, resolve.A)) == struct.pack("!HHHHHH", 3, 0x8183, 1, 0, 0, 0) + nope + b"\0\1\0\1"
+    # The name exists but has no AAAA: no error, no answers, and the SOA again.
+    empty_q = b"\x05empty" + EXAMPLE
+    want = struct.pack("!HHHHHH", 4, 0x8180, 1, 0, 1, 0) + empty_q + b"\0\x1c\0\1" + soa_rr
+    assert ask_udp(query(4, empty_q, resolve.AAAA)) == want, ask_udp(query(4, empty_q, resolve.AAAA))
+    # 804 bytes of TXT: over 512, so plain UDP gets the question back with TC set and nothing else...
+    big = b"\x03big" + EXAMPLE
+    assert ask_udp(query(5, big, resolve.TXT)) == struct.pack("!HHHHHH", 5, 0x8380, 1, 0, 0, 0) + big + b"\0\x10\0\1"
+    # ...a client offering EDNS's 1232 bytes gets it all over UDP, with an OPT record back...
+    txt_rr = big + b"\0\x10\0\1\0\0\x01\x2c\x03\x24" + (b"\xc8" + b"x" * 200) * 4
+    opt_rr = b"\0\0\x29\x04\xd0\0\0\0\0\0\0"
+    want = struct.pack("!HHHHHH", 6, 0x8180, 1, 1, 0, 1) + big + b"\0\x10\0\1" + txt_rr + opt_rr
+    assert ask_udp(query(6, big, resolve.TXT, edns=True)) == want
+    # ...and TCP carries it whole, twice on one connection.
+    with socket.create_connection(("127.0.0.1", port), timeout=2) as s:
+        for ident in (7, 8):
+            s.sendall(struct.pack("!H", len(query(ident, big, resolve.TXT))) + query(ident, big, resolve.TXT))
+            length = struct.unpack("!H", resolve._read_exactly(s, 2))[0]
+            got = resolve._read_exactly(s, length)
+            assert got == struct.pack("!HHHHHH", ident, 0x8180, 1, 1, 0, 0) + big + b"\0\x10\0\1" + txt_rr, got[:16]
+    # No server for the zone answers: SERVFAIL, not a made-up NXDOMAIN.
+    dead = b"\x01x\x04dead\x00"
+    assert ask_udp(query(9, dead, resolve.A)) == struct.pack("!HHHHHH", 9, 0x8182, 1, 0, 0, 0) + dead + b"\0\1\0\1"
+    # A status query (opcode 2) is not implemented, a cut-off name is a format error,
+    # and a packet with QR set is a reply, which gets no answer at all.
+    assert ask_udp(query(10, EXAMPLE, resolve.A, flags=0x1100)) == struct.pack("!HHHHHH", 10, 0x9184, 0, 0, 0, 0)
+    assert ask_udp(struct.pack("!HHHHHH", 11, 0x0100, 1, 0, 0, 0) + b"\x07exam") == struct.pack("!HHHHHH", 11, 0x8181, 0, 0, 0, 0)
+    assert ask_udp(query(12, EXAMPLE, resolve.A, flags=0x8100)) is None
+finally:
+    for s in (udp, tcp): s.shutdown(); s.server_close()
+    resolve.ask, resolve.clock = real_ask, real_clock
+    resolve.answers.clear()
+    resolve.missing.clear()
+    resolve.known.clear()
+    resolve.known[""] = (float("inf"), list(ROOT_IPS))
+
 # Live: a.root-servers.net has had the same address since 1997, so both resolvers must agree.
 ours = {r["value"] for r in resolve.resolve("a.root-servers.net")}
 theirs = {ai[4][0] for ai in socket.getaddrinfo("a.root-servers.net", 53, socket.AF_INET)}
