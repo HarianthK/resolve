@@ -492,8 +492,9 @@ Five details took more care than the packing:
   answers), and no server answering (SERVFAIL) are three different replies.
   `NoData` now carries the rcode so these stay apart. The first two carry the
   zone's SOA record, so the client knows how long it may remember the miss. A
-  miss served from the cache goes out without one, because only its expiry
-  time is kept.
+  miss served from the cache keeps its SOA, with the TTL counting down to when
+  the miss expires. At first the cache kept only that expiry time and the SOA
+  was lost.
 - Plain UDP replies stop at 512 bytes. A client that sends an OPT record says
   how much it can take. Anything bigger goes back as the question alone with
   TC set, and the client asks again over TCP, which the server also listens on.
@@ -520,8 +521,9 @@ It covers:
 - an opcode it doesn't implement, a name cut off partway, and a reply sent to
   it as if it were a question
 
-Thirteen breakages each fail it. The last one written, a cached miss served as
-SERVFAIL, at first passed; that is why the second NXDOMAIN check exists.
+Fifteen breakages each fail it. One of them, a cached miss served as SERVFAIL,
+passed at first, which is why the second NXDOMAIN check exists. Two more
+drop the cached SOA or freeze its TTL.
 
 Live, dnspython (installed outside the repo) asked it for en.wikipedia.org,
 gmail.com MX, a missing name, google.com TXT (truncated, then over TCP) and
