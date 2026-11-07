@@ -25,7 +25,8 @@ known = {"": (math.inf, list(ROOTS.values()))}
 answers = {}
 # RFC 4035's DO bit: set, servers send the RRSIG records that sign each answer. dnssec.py sets it.
 DNSSEC_OK = False
-# Names a server said do not exist, name -> expiry. A missing name is missing for every type.
+# Names a server said do not exist, name -> (expiry, the reply's authority section, its SOA and
+# proof). A missing name is missing for every type.
 missing = {}
 clock = time.monotonic  # a test swaps this to jump forward without waiting
 # RFC 9156: tell each server only the next label down, not the whole name. DOCS.md has why.
@@ -252,9 +253,11 @@ def resolve_fresh(name, qtype=A, verbose=False, depth=0, aliases=()):
     if name in aliases:
         raise LookupError("CNAME loop: " + " -> ".join(aliases[aliases.index(name):] + (name,)))
     now = clock()
-    if missing.get(name, 0) > now:
-        if verbose: print(f"  {name} does not exist, from the cache, {int(missing[name] - now)}s left")
-        raise NoData(f"{name} does not exist (NXDOMAIN, cached)", [], 3)
+    expires, authority = missing.get(name, (0, []))
+    if expires > now:
+        if verbose: print(f"  {name} does not exist, from the cache, {int(expires - now)}s left")
+        # The SOA goes with the miss, counting down like any cached record, so a client can cache it too.
+        raise NoData(f"{name} does not exist (NXDOMAIN, cached)", [dict(r, ttl=int(expires - now)) for r in authority], 3)
     key = (name, qtype)
     if key in answers and answers[key][0] > now:
         expires, records = answers[key]
@@ -286,7 +289,7 @@ def resolve_fresh(name, qtype=A, verbose=False, depth=0, aliases=()):
             # RFC 2308: the zone's SOA comes back with the answer, and the shorter of its own
             # TTL and its minimum field is how long the name may be remembered as missing.
             soa = next((r for r in reply["authority"] if r["type"] == SOA), None)
-            if soa: missing[name] = clock() + min(soa["ttl"], soa["minimum"])
+            if soa: missing[name] = (clock() + min(soa["ttl"], soa["minimum"]), reply["authority"])
             raise NoData(f"{name} does not exist (NXDOMAIN)", reply["authority"], 3)
         # Only records about the name asked are believed; anything else in the reply could be planted.
         about = [r for r in reply["answers"] if r["name"].lower() == name]

@@ -532,7 +532,8 @@ def ask_udp(packet):
         except socket.timeout: return None
 
 
-resolve.ask, resolve.clock = served_ask, (lambda: 9000.0)
+served_now = [9000.0]
+resolve.ask, resolve.clock = served_ask, (lambda: served_now[0])
 udp, tcp = resolve.serve(0)
 port = udp.server_address[1]
 try:
@@ -552,8 +553,12 @@ try:
     soa_rr = EXAMPLE + b"\0\6\0\1\0\0\x03\x84" + struct.pack("!H", len(SOA_WIRE)) + SOA_WIRE
     want = struct.pack("!HHHHHH", 3, 0x8183, 1, 0, 1, 0) + nope + b"\0\1\0\1" + soa_rr
     assert ask_udp(query(3, nope, resolve.A)) == want, ask_udp(query(3, nope, resolve.A))
-    # Asked again, the miss comes from the cache: still NXDOMAIN, though the SOA is not kept.
-    assert ask_udp(query(3, nope, resolve.A)) == struct.pack("!HHHHHH", 3, 0x8183, 1, 0, 0, 0) + nope + b"\0\1\0\1"
+    # 100 seconds on, the miss comes from the cache, and so does its SOA, with 800 seconds left.
+    served_now[0] += 100
+    cached_soa = EXAMPLE + b"\0\6\0\1\0\0\x03\x20" + struct.pack("!H", len(SOA_WIRE)) + SOA_WIRE
+    want = struct.pack("!HHHHHH", 3, 0x8183, 1, 0, 1, 0) + nope + b"\0\1\0\1" + cached_soa
+    assert ask_udp(query(3, nope, resolve.A)) == want, ask_udp(query(3, nope, resolve.A))
+    served_now[0] -= 100
     # The name exists but has no AAAA: no error, no answers, and the SOA again.
     empty_q = b"\x05empty" + EXAMPLE
     want = struct.pack("!HHHHHH", 4, 0x8180, 1, 0, 1, 0) + empty_q + b"\0\x1c\0\1" + soa_rr
