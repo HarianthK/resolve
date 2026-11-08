@@ -14,8 +14,9 @@ import time
 ROOTS = {"a": "198.41.0.4", "b": "170.247.170.2", "c": "192.33.4.12", "d": "199.7.91.13", "e": "192.203.230.10",
          "f": "192.5.5.241", "g": "192.112.36.4", "h": "198.97.190.53", "i": "192.36.148.17", "j": "192.58.128.30",
          "k": "193.0.14.129", "l": "199.7.83.42", "m": "202.12.27.33"}
-A, NS, CNAME, SOA, PTR, MX, TXT, AAAA, SRV, OPT, DS, RRSIG, NSEC, DNSKEY, NSEC3, CAA = 1, 2, 5, 6, 12, 15, 16, 28, 33, 41, 43, 46, 47, 48, 50, 257
-TYPE_NAMES = {A: "A", NS: "NS", CNAME: "CNAME", AAAA: "AAAA", SOA: "SOA", PTR: "PTR", MX: "MX", TXT: "TXT", SRV: "SRV", DS: "DS", RRSIG: "RRSIG", NSEC: "NSEC", DNSKEY: "DNSKEY", NSEC3: "NSEC3", CAA: "CAA"}
+A, NS, CNAME, SOA, PTR, MX, TXT, AAAA, SRV, OPT, DS, RRSIG, NSEC, DNSKEY, NSEC3, SVCB, HTTPS, CAA = 1, 2, 5, 6, 12, 15, 16, 28, 33, 41, 43, 46, 47, 48, 50, 64, 65, 257
+TYPE_NAMES = {A: "A", NS: "NS", CNAME: "CNAME", AAAA: "AAAA", SOA: "SOA", PTR: "PTR", MX: "MX", TXT: "TXT", SRV: "SRV", DS: "DS", RRSIG: "RRSIG", NSEC: "NSEC", DNSKEY: "DNSKEY", NSEC3: "NSEC3", SVCB: "SVCB", HTTPS: "HTTPS", CAA: "CAA"}
+SVC_KEYS = {0: "mandatory", 1: "alpn", 2: "no-default-alpn", 3: "port", 4: "ipv4hint", 5: "ech", 6: "ipv6hint", 7: "dohpath", 8: "ohttp"}
 FORMERR = 1
 # The UDP reply size EDNS asks for: DNS Flag Day 2020's figure, small enough never to fragment.
 EDNS_SIZE = 1232
@@ -89,6 +90,39 @@ def read_name(data, pos):
     return ".".join(labels), end if jumped else pos
 
 
+def _svc_text(raw, separators=b""):
+    # Printable bytes as they are, a backslash before a backslash or separator, anything else as \DDD.
+    out = []
+    for b in raw:
+        if b in b"\\" + separators: out.append("\\" + chr(b))
+        elif 0x21 <= b <= 0x7E and b != 0x22: out.append(chr(b))
+        else: out.append(f"\\{b:03d}")
+    return "".join(out)
+
+
+def svc_params(raw):
+    # Each parameter is a key, a length and a value, in increasing key order (RFC 9460 section 2.2).
+    out, at = [], 0
+    while at < len(raw):
+        key, length = struct.unpack("!HH", raw[at:at + 4])
+        v = raw[at + 4:at + 4 + length]
+        at += 4 + length
+        name = SVC_KEYS.get(key, f"key{key}")
+        if key == 0: text = ",".join(SVC_KEYS.get(k, f"key{k}") for (k,) in struct.iter_unpack("!H", v))
+        elif key == 1:
+            ids, i = [], 0
+            while i < len(v): ids.append(_svc_text(v[i + 1:i + 1 + v[i]], b",")); i += 1 + v[i]
+            text = ",".join(ids)
+        elif key in (2, 8): out.append(name); continue
+        elif key == 3: text = str(struct.unpack("!H", v)[0])
+        elif key == 4: text = ",".join(".".join(map(str, v[i:i + 4])) for i in range(0, len(v), 4))
+        elif key == 5: text = base64.b64encode(v).decode()
+        elif key == 6: text = ",".join(socket.inet_ntop(socket.AF_INET6, v[i:i + 16]) for i in range(0, len(v), 16))
+        else: text = '"' + _svc_text(v) + '"'
+        out.append(f"{name}={text}")
+    return out
+
+
 def read_record(data, pos):
     name, pos = read_name(data, pos)
     rtype, rclass, ttl, rdlen = struct.unpack("!HHIH", data[pos:pos + 10])
@@ -107,6 +141,10 @@ def read_record(data, pos):
     elif rtype == DNSKEY: value = "{} {} {} ".format(*struct.unpack("!HBB", rdata[:4])) + base64.b64encode(rdata[4:]).decode()
     elif rtype == DS: value = "{} {} {} ".format(*struct.unpack("!HBB", rdata[:4])) + rdata[4:].hex().upper()
     elif rtype == SRV: value = "{} {} {} ".format(*struct.unpack("!HHH", rdata[:6])) + read_name(data, pos + 6)[0]; wire = rdata[:6] + name_wire(value.split()[3])
+    # SVCB and HTTPS (RFC 9460): a priority (0 is an alias), a target name never compressed, then parameters.
+    elif rtype in (SVCB, HTTPS):
+        target, at = read_name(data, pos + 2)
+        value = f"{struct.unpack('!H', rdata[:2])[0]} {target or '.'}" + "".join(" " + p for p in svc_params(data[at:pos + rdlen]))
     elif rtype == TXT: value = " ".join(repr(rdata[i + 1:i + 1 + rdata[i]].decode("utf-8", "replace")) for i in _txt_offsets(rdata))
     elif rtype == SOA:
         # Two names, then five numbers; the last says how long a "does not exist" may be kept.

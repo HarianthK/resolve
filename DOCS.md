@@ -530,3 +530,32 @@ gmail.com MX, a missing name, google.com TXT (truncated, then over TCP) and
 cloudflare.com AAAA, and read every reply correctly. Windows' `nslookup`
 can't be used as the client: given `-port=5300`, it sent nothing to that
 port.
+
+## HTTPS records
+
+Most large sites now publish an HTTPS record next to their addresses. It says,
+before a browser has opened a connection, which protocols the site speaks (an
+`alpn` of h3 means HTTP/3, so the browser can skip trying TCP first), on which
+port, and which addresses to try, so one lookup does the work of three. SVCB is
+the same record for any service. The record is a priority, where 0 means an
+alias to another name, a target name, where `.` means this same name, and a
+list of key, length and value parameters in increasing key order.
+
+Each known key has its own value format: a list of key names for
+`mandatory`, length-prefixed protocol ids for `alpn`, a 16-bit port, packed
+IPv4 and IPv6 addresses for the hints, base64 for the encrypted ClientHello
+config, and nothing at all for `no-default-alpn` and `ohttp`. An unknown key
+prints as `keyNNNNN` with its value quoted, with bytes outside printable ASCII
+as `\DDD`. A protocol id may contain a comma or a backslash, so both are
+escaped with a backslash inside the `alpn` list, which keeps the list
+splittable. The target is never compressed in the wire form, so the record's
+own bytes are already its canonical form for the server mode and DNSSEC.
+
+The checks use RFC 9460's Appendix D test vectors, typed from the RFC rather
+than produced by this code, plus one for the valueless keys and base64. A
+live lookup of cloudflare.com and www.google.com matched dnspython's answer
+field for field. Ten breakages each fail a check: no escaping of a comma or of
+a backslash, the port read little-endian, `mandatory` printed as numbers,
+hints read two bytes apart, the root target printed as nothing, unknown keys
+left unnumbered, a valueless key given `=`, HTTPS missing from the names the
+command line accepts, and raw bytes printed instead of `\DDD`.

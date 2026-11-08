@@ -22,6 +22,9 @@ so it goes again, this time starting from the .org server it already knows.
 - A, AAAA, NS, CNAME, MX, TXT, SRV, PTR, CAA, DNSKEY, DS and RRSIG records,
   decoded from their wire form, and reverse lookups with `-x ADDRESS` for IPv4
   and IPv6.
+- HTTPS and SVCB records (RFC 9460), which tell a browser before it connects
+  that a site speaks HTTP/3, on which port and at which addresses:
+  `cloudflare.com HTTPS` gives `1 . alpn=h3,h2 ipv4hint=... ipv6hint=...`.
 - DNSSEC validation with `--dnssec` (in `dnssec.py`): the answer is used only
   if its signature chains up to the root zone's published key, through each
   zone's DS record in its parent. RSA/SHA-256, RSA/SHA-512, ECDSA P-256 and P-384, and Ed25519,
@@ -64,7 +67,7 @@ one afternoon. [DOCS.md](DOCS.md) is what I learned.
 
 ## Running it
 
-    python resolve.py NAME [A|AAAA|NS|MX|TXT|SRV|PTR|CAA|DS|DNSKEY] [-v] [--dnssec]
+    python resolve.py NAME [A|AAAA|NS|MX|TXT|SRV|PTR|CAA|HTTPS|SVCB|DS|DNSKEY] [-v] [--dnssec]
     python resolve.py --serve 5300      # then: dig @127.0.0.1 -p 5300 example.com
     python test_resolve.py
     python test_dnssec.py

@@ -594,6 +594,27 @@ finally:
     resolve.known.clear()
     resolve.known[""] = (float("inf"), list(ROOT_IPS))
 
+# SVCB and HTTPS: the wire forms are RFC 9460 Appendix D's test vectors, typed from the RFC.
+def svc(rtype, rdata):
+    record = b"\x07example\x03com\x00" + struct.pack("!HHIH", rtype, 1, 300, len(rdata)) + rdata
+    r, end = resolve.read_record(record, 0)
+    assert end == len(record) and r["wire"] == rdata
+    return r["value"]
+
+FOO_COM, FOO_ORG = b"\x03foo\x07example\x03com\x00", b"\x03foo\x07example\x03org\x00"
+assert svc(resolve.HTTPS, b"\x00\x00" + FOO_COM) == "0 foo.example.com"  # D.1, alias mode
+assert svc(resolve.SVCB, b"\x00\x01\x00") == "1 ."  # D.2 figure 2
+assert svc(resolve.SVCB, b"\x00\x10" + FOO_COM + b"\x00\x03\x00\x02\x00\x35") == "16 foo.example.com port=53"
+assert svc(resolve.SVCB, b"\x00\x01" + FOO_COM + b"\x02\x9b\x00\x05hello") == '1 foo.example.com key667="hello"'
+assert svc(resolve.SVCB, b"\x00\x01" + FOO_COM + b"\x02\x9b\x00\x09hello\xd2qoo") == '1 foo.example.com key667="hello\\210qoo"'
+assert svc(resolve.SVCB, b"\x00\x01" + FOO_COM + b"\x00\x06\x00\x20" + bytes.fromhex("20010db8000000000000000000000001" "20010db8000000000000000000530001")) == "1 foo.example.com ipv6hint=2001:db8::1,2001:db8::53:1"
+assert svc(resolve.SVCB, b"\x00\x01" + b"\x07example\x03com\x00" + b"\x00\x06\x00\x10" + bytes.fromhex("20010db80122034400000000c0000221")) == "1 example.com ipv6hint=2001:db8:122:344::c000:221"
+assert svc(resolve.SVCB, b"\x00\x10" + FOO_ORG + b"\x00\x00\x00\x04\x00\x01\x00\x04" + b"\x00\x01\x00\x09\x02h2\x05h3-19" + b"\x00\x04\x00\x04\xc0\x00\x02\x01") == "16 foo.example.org mandatory=alpn,ipv4hint alpn=h2,h3-19 ipv4hint=192.0.2.1"
+# An alpn id may hold a comma or a backslash, which are escaped so the list still splits right.
+assert svc(resolve.SVCB, b"\x00\x10" + FOO_ORG + b"\x00\x01\x00\x0c\x08f\\oo,bar\x02h2") == "16 foo.example.org alpn=f\\\\oo\\,bar,h2"
+assert svc(resolve.HTTPS, b"\x00\x01\x00" + b"\x00\x02\x00\x00" + b"\x00\x05\x00\x03\x01\x02\x03" + b"\x00\x08\x00\x00") == "1 . no-default-alpn ech=AQID ohttp"
+assert resolve.TYPE_NAMES[65] == "HTTPS" and resolve.TYPE_NAMES[64] == "SVCB"
+
 # Live: a.root-servers.net has had the same address since 1997, so both resolvers must agree.
 ours = {r["value"] for r in resolve.resolve("a.root-servers.net")}
 theirs = {ai[4][0] for ai in socket.getaddrinfo("a.root-servers.net", 53, socket.AF_INET)}
