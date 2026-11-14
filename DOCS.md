@@ -559,3 +559,23 @@ a backslash, the port read little-endian, `mandatory` printed as numbers,
 hints read two bytes apart, the root target printed as nothing, unknown keys
 left unnumbered, a valueless key given `=`, HTTPS missing from the names the
 command line accepts, and raw bytes printed instead of `\DDD`.
+
+## TLSA and SSHFP: fingerprints published in the DNS
+
+Both records answer the same question for a different protocol: what should
+the server at this name prove it has? A TLSA record, at a name such as
+`_25._tcp.mail.ietf.org` (port 25, TCP), pins a TLS certificate. Its three
+numbers say which certificate in the chain (3 is the server's own), whether the
+match is on the whole certificate or only its public key (1), and how it is
+compared (1 is a SHA-256 hash); the rest is the hash. An SSHFP record pins an
+SSH host key: the key's algorithm (4 is Ed25519), the hash (1 is SHA-1, 2
+SHA-256), then the fingerprint. Neither is worth much without DNSSEC, since a
+forged answer could pin a forged key, so `--dnssec` is the way to ask for them.
+
+Both are shown as dig shows them, the numbers then the hash in upper-case hex.
+The check builds each from the example in its RFC (4255 section 3.3, 6698
+section 2.3) with the type numbers written out, not taken from resolve.py. The
+live answers for `_25._tcp.mail.ietf.org TLSA` and `ftp.netbsd.org SSHFP`
+matched Google's public resolver. Five breakages, all caught: SSHFP given the
+wrong type number, TLSA read with only two fields, the hash in lower case,
+TLSA left out of the names, and the first two fields swapped.

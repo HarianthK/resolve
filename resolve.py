@@ -14,8 +14,8 @@ import time
 ROOTS = {"a": "198.41.0.4", "b": "170.247.170.2", "c": "192.33.4.12", "d": "199.7.91.13", "e": "192.203.230.10",
          "f": "192.5.5.241", "g": "192.112.36.4", "h": "198.97.190.53", "i": "192.36.148.17", "j": "192.58.128.30",
          "k": "193.0.14.129", "l": "199.7.83.42", "m": "202.12.27.33"}
-A, NS, CNAME, SOA, PTR, MX, TXT, AAAA, SRV, OPT, DS, RRSIG, NSEC, DNSKEY, NSEC3, SVCB, HTTPS, CAA = 1, 2, 5, 6, 12, 15, 16, 28, 33, 41, 43, 46, 47, 48, 50, 64, 65, 257
-TYPE_NAMES = {A: "A", NS: "NS", CNAME: "CNAME", AAAA: "AAAA", SOA: "SOA", PTR: "PTR", MX: "MX", TXT: "TXT", SRV: "SRV", DS: "DS", RRSIG: "RRSIG", NSEC: "NSEC", DNSKEY: "DNSKEY", NSEC3: "NSEC3", SVCB: "SVCB", HTTPS: "HTTPS", CAA: "CAA"}
+A, NS, CNAME, SOA, PTR, MX, TXT, AAAA, SRV, OPT, DS, SSHFP, RRSIG, NSEC, DNSKEY, NSEC3, TLSA, SVCB, HTTPS, CAA = 1, 2, 5, 6, 12, 15, 16, 28, 33, 41, 43, 44, 46, 47, 48, 50, 52, 64, 65, 257
+TYPE_NAMES = {A: "A", NS: "NS", CNAME: "CNAME", AAAA: "AAAA", SOA: "SOA", PTR: "PTR", MX: "MX", TXT: "TXT", SRV: "SRV", DS: "DS", RRSIG: "RRSIG", NSEC: "NSEC", DNSKEY: "DNSKEY", NSEC3: "NSEC3", SVCB: "SVCB", HTTPS: "HTTPS", CAA: "CAA", SSHFP: "SSHFP", TLSA: "TLSA"}
 SVC_KEYS = {0: "mandatory", 1: "alpn", 2: "no-default-alpn", 3: "port", 4: "ipv4hint", 5: "ech", 6: "ipv6hint", 7: "dohpath", 8: "ohttp"}
 FORMERR = 1
 # The UDP reply size EDNS asks for: DNS Flag Day 2020's figure, small enough never to fragment.
@@ -139,6 +139,10 @@ def read_record(data, pos):
     # DNSSEC, shown but not checked: a key is flags, protocol, algorithm and the key itself; a DS is
     # the parent's fingerprint of a child's key: its tag, algorithm, digest type and digest.
     elif rtype == DNSKEY: value = "{} {} {} ".format(*struct.unpack("!HBB", rdata[:4])) + base64.b64encode(rdata[4:]).decode()
+    # SSHFP (RFC 4255): a server's SSH key algorithm, the hash used, then the fingerprint of that key.
+    # TLSA (RFC 6698), DANE: which certificate it pins, which part of it, how matched, then the match.
+    elif rtype == SSHFP: value = f"{rdata[0]} {rdata[1]} " + rdata[2:].hex().upper()
+    elif rtype == TLSA: value = f"{rdata[0]} {rdata[1]} {rdata[2]} " + rdata[3:].hex().upper()
     elif rtype == DS: value = "{} {} {} ".format(*struct.unpack("!HBB", rdata[:4])) + rdata[4:].hex().upper()
     elif rtype == SRV: value = "{} {} {} ".format(*struct.unpack("!HHH", rdata[:6])) + read_name(data, pos + 6)[0]; wire = rdata[:6] + name_wire(value.split()[3])
     # SVCB and HTTPS (RFC 9460): a priority (0 is an alias), a target name never compressed, then parameters.
@@ -437,7 +441,7 @@ if __name__ == "__main__":
         except KeyboardInterrupt:
             sys.exit()
     args = [a for a in sys.argv[1:] if not a.startswith("-")]
-    if not args: sys.exit("usage: python resolve.py NAME [A|AAAA|NS|MX|TXT|SRV|PTR|CAA|DS|DNSKEY] [-v] [--dnssec], or -x ADDRESS, or --serve [PORT]")
+    if not args: sys.exit("usage: python resolve.py NAME [A|AAAA|NS|MX|TXT|SRV|PTR|CAA|HTTPS|SVCB|TLSA|SSHFP|DS|DNSKEY] [-v] [--dnssec], or -x ADDRESS, or --serve [PORT]")
     qtype = {v: k for k, v in TYPE_NAMES.items()}.get(args[1].upper() if len(args) > 1 else "A", A)
     if "-x" in sys.argv:
         # A reverse lookup is a PTR question about the address written backwards under in-addr.arpa or ip6.arpa.

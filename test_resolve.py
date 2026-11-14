@@ -41,6 +41,18 @@ caa = b"\xc0\x0c" + struct.pack("!HHIH", resolve.CAA, 1, 60, 19) + b"\x00\x05iss
 got = resolve.parse(struct.pack("!HHHHHH", 9, 0x8180, 1, 1, 0, 0) + caa_q + caa)["answers"][0]
 assert got["value"] == '0 issue "pki.googabc"', got["value"]
 
+# SSHFP and TLSA from the examples in their RFCs: 4255 section 3.3, a DSA key's SHA-1 fingerprint,
+# and 6698 section 2.3, a CA certificate pinned by its SHA-256 hash.
+for rtype, fixed, digest, want in (
+        (44, b"\x02\x01", "123456789abcdef67890123456789abcdef67890", "2 1 123456789ABCDEF67890123456789ABCDEF67890"),
+        (52, b"\x00\x00\x01", "d2abde240d7cd3ee6b4b28c54df034b97983a1d16e8a410e4561cb106618e971",
+         "0 0 1 D2ABDE240D7CD3EE6B4B28C54DF034B97983A1D16E8A410E4561CB106618E971")):
+    q = b"\x07example\x03com\x00" + struct.pack("!HH", rtype, 1)
+    body = fixed + bytes.fromhex(digest)
+    rec = b"\xc0\x0c" + struct.pack("!HHIH", rtype, 1, 60, len(body)) + body
+    got = resolve.parse(struct.pack("!HHHHHH", 11, 0x8180, 1, 1, 0, 0) + q + rec)["answers"][0]
+    assert got["value"] == want and resolve.TYPE_NAMES[rtype] == {44: "SSHFP", 52: "TLSA"}[rtype], got["value"]
+
 # DNSKEY and DS by hand: a key-signing key (flags 257, algorithm 13) and its digest in the parent.
 key_q = b"\x07example\x03com\x00" + struct.pack("!HH", resolve.DNSKEY, 1)
 key = b"\xc0\x0c" + struct.pack("!HHIH", resolve.DNSKEY, 1, 60, 7) + struct.pack("!HBB", 257, 3, 13) + b"key"
