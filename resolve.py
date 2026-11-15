@@ -29,6 +29,8 @@ DNSSEC_OK = False
 # Names a server said do not exist, name -> (expiry, the reply's authority section, its SOA and
 # proof). A missing name is missing for every type.
 missing = {}
+# Names that exist but have no records of a type, (name, type) -> (expiry, authority); RFC 2308 section 5.
+nodata = {}
 clock = time.monotonic  # a test swaps this to jump forward without waiting
 # RFC 9156: tell each server only the next label down, not the whole name. DOCS.md has why.
 MINIMISE = True
@@ -301,6 +303,9 @@ def resolve_fresh(name, qtype=A, verbose=False, depth=0, aliases=()):
         # The SOA goes with the miss, counting down like any cached record, so a client can cache it too.
         raise NoData(f"{name} does not exist (NXDOMAIN, cached)", [dict(r, ttl=int(expires - now)) for r in authority], 3)
     key = (name, qtype)
+    expires, authority = nodata.get(key, (0, []))
+    if expires > now:
+        raise NoData(f"{name} has no {TYPE_NAMES.get(qtype, qtype)} records (NODATA, cached)", [dict(r, ttl=int(expires - now)) for r in authority])
     if key in answers and answers[key][0] > now:
         expires, records = answers[key]
         if verbose: print(f"  {name} {TYPE_NAMES.get(qtype, qtype)} from the cache, {int(expires - now)}s left")
@@ -347,6 +352,11 @@ def resolve_fresh(name, qtype=A, verbose=False, depth=0, aliases=()):
             # The alias is only good for as long as both it and what it points at are.
             return remember_answer(key, [dict(r, ttl=min(r["ttl"], cname["ttl"])) for r in target])
         referral = [r for r in reply["authority"] if r["type"] == NS]
+        soa = next((r for r in reply["authority"] if r["type"] == SOA), None)
+        if soa and not referral and reply["rcode"] == 0:
+            # The name is there, just not this type; remembered for as long as an NXDOMAIN would be.
+            nodata[key] = (clock() + min(soa["ttl"], soa["minimum"]), reply["authority"])
+            raise NoData(f"{name} has no {TYPE_NAMES.get(qtype, qtype)} records (NODATA)", reply["authority"])
         if not referral: raise NoData(f"{server} had no answer and no referral for {name}", reply["authority"], reply["rcode"])
         below = referral[0]["name"].lower()
         # Bailiwick: a server may only hand down a zone between its own and the name, never sideways or up.

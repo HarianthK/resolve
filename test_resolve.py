@@ -160,6 +160,41 @@ finally:
     resolve.known.clear()
     resolve.known[""] = (float("inf"), list(ROOT_IPS))
 
+# A name that exists without the type asked, offline: no error, no answers, and the .com SOA.
+# It reads as NODATA, not as a broken server, and is kept for the SOA's 900 seconds, for that type only.
+def nodata_ask(server, name, qtype=resolve.A, timeout=3, verbose=False):
+    reply = missing_ask(server, name, qtype)
+    return dict(reply, rcode=0) if reply["rcode"] == 3 else reply
+
+
+now[0] = 7000.0
+resolve.ask, resolve.clock = nodata_ask, (lambda: now[0])
+try:
+    for asked, cached in ((2, ""), (0, ", cached")):
+        packets.clear()
+        try: resolve.resolve("empty.com", resolve.AAAA)
+        except resolve.NoData as e:
+            assert str(e) == f"empty.com has no AAAA records (NODATA{cached})", e
+            assert e.rcode == 0 and e.authority[0]["type"] == resolve.SOA, e.authority
+        else: raise AssertionError("empty.com AAAA resolved")
+        assert len(packets) == asked, packets
+        now[0] += 100
+    packets.clear()
+    try: resolve.resolve("empty.com", resolve.MX)
+    except resolve.NoData: pass
+    assert packets == ["10.0.0.1"], "another type is asked again"
+    now[0] += 800
+    packets.clear()
+    try: resolve.resolve("empty.com", resolve.AAAA)
+    except resolve.NoData: pass
+    assert packets == ["10.0.0.1"], "past the SOA's 900 seconds, asked again"
+finally:
+    resolve.ask, resolve.clock = real_ask, real_clock
+    resolve.answers.clear()
+    resolve.nodata.clear()
+    resolve.known.clear()
+    resolve.known[""] = (float("inf"), list(ROOT_IPS))
+
 # Failover, offline: .com has three servers and the first two asked time out. The lookup
 # still succeeds, and each server is asked once. With all three silent, it says so.
 dead = set()

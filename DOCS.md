@@ -103,6 +103,15 @@ must not go back to the network. And an NXDOMAIN that arrives without an SOA
 gives no time to keep it, so it is not kept at all. The offline test covers both,
 and the SOA record is now decoded instead of shown as raw bytes.
 
+A name that exists but has no records of the type asked (NODATA) comes back
+with no error, no answers and the same SOA. Until 11-15 the lookup loop took
+that reply for a broken server and said it "had no answer and no referral".
+Now an SOA with no NS records beside it means NODATA: the error says the name
+has no records of that type, and RFC 2308 section 5 applies the same SOA timer.
+Unlike a missing name, NODATA is kept by name and type, since the name may well
+have other types. Five breakages fail the test: not keeping it, not spotting
+it, the wrong timer, keeping it by name alone, and reading another type's entry.
+
 ## A zone has many servers because some are always down
 
 Every referral names several servers, usually between two and thirteen, and
