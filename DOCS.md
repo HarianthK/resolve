@@ -588,3 +588,28 @@ live answers for `_25._tcp.mail.ietf.org TLSA` and `ftp.netbsd.org SSHFP`
 matched Google's public resolver. Five breakages, all caught: SSHFP given the
 wrong type number, TLSA read with only two fields, the hash in lower case,
 TLSA left out of the names, and the first two fields swapped.
+
+## A reply that is broken on purpose
+
+Three things in a reply could hurt the resolver rather than just being wrong.
+
+A compressed name is a pointer to a name earlier in the packet, and nothing
+stopped a pointer from pointing at itself, or two from pointing at each other.
+`read_name` then followed them forever. A server could freeze a lookup with two
+bytes, and any client of `--serve` could freeze a serving thread the same way.
+Every pointer must now land before the last place it jumped to, as dnspython
+requires. A real server always points back at a name it has already written,
+so nothing honest is refused, and since each jump goes lower the name always ends.
+
+A reply cut short raised `IndexError` or `struct.error`. `ask_any` tries the next
+server only on `OSError` or `ValueError`, so one bad server ended the whole lookup.
+`parse` now turns both into a `ValueError`.
+
+A record whose stated length ran past the end of the packet was read as
+whatever bytes were there, so a cut-off A record came back as an empty address.
+It is now refused. This check found that the CAA test's own hand-built record
+said 19 bytes and held 18.
+
+Each of the four guards (the pointer check, the error in `parse`, the length check,
+and `respond` treating a `ValueError` as a format error) was removed in turn,
+and the tests failed every time.

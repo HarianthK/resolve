@@ -77,13 +77,15 @@ def name_wire(name):
 
 def read_name(data, pos):
     # Labels, or a two-byte pointer (top bits 11) to an earlier name. A pointer ends the name.
-    labels, jumped, end = [], False, None
+    labels, jumped, end, back = [], False, None, pos
     while True:
         length = data[pos]
         if length & 0xC0 == 0xC0:
             if not jumped: end = pos + 2
             pos = struct.unpack("!H", data[pos:pos + 2])[0] & 0x3FFF
-            jumped = True
+            # Each jump must land before the last, so pointers that loop cannot run forever.
+            if pos >= back: raise ValueError("a compressed name points forward or loops")
+            jumped, back = True, pos
             continue
         pos += 1
         if length == 0: break
@@ -129,6 +131,7 @@ def read_record(data, pos):
     name, pos = read_name(data, pos)
     rtype, rclass, ttl, rdlen = struct.unpack("!HHIH", data[pos:pos + 10])
     pos += 10
+    if pos + rdlen > len(data): raise ValueError("a record runs past the end of the reply")
     rdata = wire = data[pos:pos + rdlen]
     # wire is the record data in canonical form (RFC 4034 section 6.2): any names in it spelled out.
     if rtype in (NS, CNAME, PTR): value = read_name(data, pos)[0]; wire = name_wire(value)
@@ -193,6 +196,12 @@ def _txt_offsets(rdata):
 
 
 def parse(data):
+    # A short or garbled reply is a ValueError, the error ask_any answers by trying another server.
+    try: return _parse(data)
+    except (IndexError, struct.error) as e: raise ValueError(f"a malformed reply ({e})") from e
+
+
+def _parse(data):
     ident, flags, qd, an, ns, ar = struct.unpack("!HHHHHH", data[:12])
     pos = 12
     for _ in range(qd):
@@ -385,7 +394,7 @@ def respond(query, udp=True, verbose=False):
         name, pos = read_name(query, 12)
         qtype = struct.unpack("!H", query[pos:pos + 2])[0]
         question = query[12:pos + 4]
-    except (IndexError, UnicodeDecodeError, struct.error):
+    except (IndexError, ValueError, struct.error):
         return header(FORMERR)
     # A client that sends an OPT record says how big a UDP reply it takes; without one, 512.
     opt = query[pos + 4:pos + 9]

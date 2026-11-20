@@ -35,9 +35,9 @@ ptr = b"\xc0\x0c" + struct.pack("!HHIH", resolve.PTR, 1, 60, 14) + b"\x04host\x0
 got = resolve.parse(struct.pack("!HHHHHH", 8, 0x8180, 1, 1, 0, 0) + ptr_q + ptr)["answers"][0]
 assert got["value"] == "host.example", got["value"]
 
-# CAA by hand: flags 0, the five-letter tag "issue", then the authority, 19 bytes in all.
+# CAA by hand: flags 0, the five-letter tag "issue", then the authority, 18 bytes in all.
 caa_q = b"\x07example\x03com\x00" + struct.pack("!HH", resolve.CAA, 1)
-caa = b"\xc0\x0c" + struct.pack("!HHIH", resolve.CAA, 1, 60, 19) + b"\x00\x05issue" + b"pki.goog" + b"abc"
+caa = b"\xc0\x0c" + struct.pack("!HHIH", resolve.CAA, 1, 60, 18) + b"\x00\x05issue" + b"pki.goog" + b"abc"
 got = resolve.parse(struct.pack("!HHHHHH", 9, 0x8180, 1, 1, 0, 0) + caa_q + caa)["answers"][0]
 assert got["value"] == '0 issue "pki.googabc"', got["value"]
 
@@ -661,6 +661,35 @@ assert svc(resolve.SVCB, b"\x00\x10" + FOO_ORG + b"\x00\x00\x00\x04\x00\x01\x00\
 assert svc(resolve.SVCB, b"\x00\x10" + FOO_ORG + b"\x00\x01\x00\x0c\x08f\\oo,bar\x02h2") == "16 foo.example.org alpn=f\\\\oo\\,bar,h2"
 assert svc(resolve.HTTPS, b"\x00\x01\x00" + b"\x00\x02\x00\x00" + b"\x00\x05\x00\x03\x01\x02\x03" + b"\x00\x08\x00\x00") == "1 . no-default-alpn ech=AQID ohttp"
 assert resolve.TYPE_NAMES[65] == "HTTPS" and resolve.TYPE_NAMES[64] == "SVCB"
+
+# A malformed packet is a ValueError, which ask_any answers by trying the next server; and a
+# compression pointer that loops must end, run here in a thread so the old hang shows as a failure.
+def outcome(f, *args):
+    out = []
+    def run():
+        try: out.append(f(*args))
+        except Exception as e: out.append(e)
+    t = threading.Thread(target=run, daemon=True); t.start(); t.join(2)
+    return out[0] if out else "still running after 2 s"
+
+header = struct.pack("!HHHHHH", 7, 0x8400, 0, 1, 0, 0)
+looped = {
+    "points at itself": header + b"\xc0\x0c" + struct.pack("!HHIH", resolve.A, 1, 60, 4) + bytes(4),
+    "two that point at each other": header + b"\xc0\x0e\xc0\x0c" + struct.pack("!HHIH", resolve.A, 1, 60, 4) + bytes(4),
+    "a label, then back to it": header + b"\x01a\xc0\x0c" + struct.pack("!HHIH", resolve.A, 1, 60, 4) + bytes(4),
+}
+for what, packet in looped.items():
+    got = outcome(resolve.parse, packet)
+    assert isinstance(got, ValueError), f"a name that {what}: {got!r}"
+good = small_a.replace(b"\xc0\x0c", b"\x01b\xc0\x0c")  # b, then back to example.com in the question
+got = outcome(resolve.parse, reply_to(query(7, b"\x07example\x03com\x00", resolve.A), answers=good, count=1))
+assert got["answers"][0]["name"] == "b.example.com", got
+whole = reply_to(query(7, b"\x07example\x03com\x00", resolve.A), answers=small_a, count=1)
+for cut in range(12, len(whole)):
+    got = outcome(resolve.parse, whole[:cut])
+    assert isinstance(got, ValueError), f"a reply cut to {cut} bytes: {got!r}"
+got = outcome(resolve.respond, struct.pack("!HHHHHH", 7, 0x0100, 1, 0, 0, 0) + b"\xc0\x0c\0\1\0\1")
+assert isinstance(got, bytes) and got[3] & 0xF == resolve.FORMERR, got
 
 # Live: a.root-servers.net has had the same address since 1997, so both resolvers must agree.
 ours = {r["value"] for r in resolve.resolve("a.root-servers.net")}
