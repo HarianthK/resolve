@@ -17,7 +17,7 @@ ROOTS = {"a": "198.41.0.4", "b": "170.247.170.2", "c": "192.33.4.12", "d": "199.
 A, NS, CNAME, SOA, PTR, MX, TXT, AAAA, SRV, OPT, DS, SSHFP, RRSIG, NSEC, DNSKEY, NSEC3, TLSA, SVCB, HTTPS, CAA = 1, 2, 5, 6, 12, 15, 16, 28, 33, 41, 43, 44, 46, 47, 48, 50, 52, 64, 65, 257
 TYPE_NAMES = {A: "A", NS: "NS", CNAME: "CNAME", AAAA: "AAAA", SOA: "SOA", PTR: "PTR", MX: "MX", TXT: "TXT", SRV: "SRV", DS: "DS", RRSIG: "RRSIG", NSEC: "NSEC", DNSKEY: "DNSKEY", NSEC3: "NSEC3", SVCB: "SVCB", HTTPS: "HTTPS", CAA: "CAA", SSHFP: "SSHFP", TLSA: "TLSA"}
 SVC_KEYS = {0: "mandatory", 1: "alpn", 2: "no-default-alpn", 3: "port", 4: "ipv4hint", 5: "ech", 6: "ipv6hint", 7: "dohpath", 8: "ohttp"}
-FORMERR = 1
+FORMERR, SERVFAIL, REFUSED = 1, 2, 5
 # The UDP reply size EDNS asks for: DNS Flag Day 2020's figure, small enough never to fragment.
 EDNS_SIZE = 1232
 # Referrals seen so far, zone -> (expiry, name server addresses), so a later lookup can start
@@ -254,10 +254,17 @@ def _read_exactly(sock, n):
 
 def ask_any(servers, name, qtype, verbose):
     # One dead or lame server is common, so each of the zone's servers gets a turn before giving up.
+    lame = None
     for server in random.sample(servers, len(servers)):
-        try: return server, ask(server, name, qtype, verbose=verbose)
+        try: reply = ask(server, name, qtype, verbose=verbose)
         except (OSError, ValueError) as e:
             if verbose: print(f"  {server:<16} did not answer ({e or type(e).__name__}), trying another")
+            continue
+        # SERVFAIL or REFUSED is usually one lame server, so the others get asked; if all say it, it stands.
+        if reply["rcode"] not in (SERVFAIL, REFUSED): return server, reply
+        if verbose: print(f"  {server:<16} answered with rcode {reply['rcode']}, trying another")
+        lame = lame or (server, reply)
+    if lame: return lame
     raise Unreachable(f"none of the {len(servers)} servers asked about {name} answered")
 
 

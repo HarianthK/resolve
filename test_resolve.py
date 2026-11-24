@@ -197,12 +197,13 @@ finally:
 
 # Failover, offline: .com has three servers and the first two asked time out. The lookup
 # still succeeds, and each server is asked once. With all three silent, it says so.
-dead = set()
+dead, lame = set(), {}
 
 
 def flaky_ask(server, name, qtype=resolve.A, timeout=3, verbose=False):
     packets.append(server)
     if server in dead: raise socket.timeout("timed out")
+    if server in lame: return {"id": 0, "rcode": lame[server], "truncated": False, "answers": [], "authority": [], "additional": []}
     empty = {"id": 0, "rcode": 0, "truncated": False, "answers": [], "authority": [], "additional": []}
     if server in ROOT_IPS:
         return dict(empty, authority=[{"name": "com", "type": resolve.NS, "ttl": 172800, "value": f"{c}.gtld"} for c in "abc"],
@@ -228,7 +229,26 @@ try:
         raise AssertionError("resolved with every server down")
     except LookupError as e:
         assert "none of the 3 servers" in str(e), e
+    # Lame servers answer, but with SERVFAIL or REFUSED: the next one is asked, as for silence.
+    dead = set()
+    for alive in ["10.0.1.0", "10.0.1.1", "10.0.1.2"]:
+        resolve.answers.clear()
+        lame = {"10.0.1.0": 2, "10.0.1.1": 5, "10.0.1.2": 2}
+        del lame[alive]
+        packets.clear()
+        assert resolve.resolve("example.com")[0]["value"] == "10.9.9.9", alive
+        assert packets[-1] == alive and len(packets) == len(set(packets)), packets
+    # All three lame: each asked once, and the lookup fails rather than looping.
+    resolve.answers.clear()
+    lame = {"10.0.1.0": 5, "10.0.1.1": 5, "10.0.1.2": 2}
+    packets.clear()
+    try:
+        resolve.resolve("example.com")
+        raise AssertionError("resolved with every server lame")
+    except LookupError as e:
+        assert sorted(packets) == sorted(lame), packets
 finally:
+    lame = {}
     resolve.ask = real_ask
     resolve.answers.clear()
     resolve.known.clear()

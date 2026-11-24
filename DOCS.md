@@ -613,3 +613,15 @@ said 19 bytes and held 18.
 Each of the four guards (the pointer check, the error in `parse`, the length check,
 and `respond` treating a `ValueError` as a format error) was removed in turn,
 and the tests failed every time.
+
+## A server that answers SERVFAIL or REFUSED
+
+A lame server, one listed for a zone that no longer serves it, usually still
+answers, with SERVFAIL or REFUSED instead of silence. `ask_any` used to take
+that reply as the zone's word. Asked for the whole name, it ended the lookup
+with "had no answer and no referral", although the zone's other servers would
+have answered. Now those two codes count like a timeout: the next server is
+asked. If every server says it, the first such reply is used, so the lookup
+still fails once and does not loop. The test makes two of the three .com
+servers lame, each in turn, and then all three; run against the old code, the
+first case fails.
