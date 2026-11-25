@@ -296,11 +296,21 @@ def remember_answer(key, records):
     return records
 
 
+def plain(name):
+    # The name as DNS sends it: lower case, no final dot, a label in another script as xn-- punycode.
+    name = name.rstrip(".").lower()
+    try: labels = [l if l.isascii() else l.encode("idna").decode() for l in name.split(".")]
+    except UnicodeError: raise LookupError(f"{name} is not a name DNS can carry") from None
+    if any(len(l) > 63 for l in labels) or len(name.encode()) > 253:
+        raise LookupError(f"{name} is too long for DNS: 63 characters a label, 253 in all")
+    return ".".join(labels)
+
+
 def resolve(name, qtype=A, verbose=False, depth=0, aliases=()):
     try:
         return resolve_fresh(name, qtype, verbose, depth, aliases)
     except Unreachable:
-        expires, records = answers.get((name.rstrip(".").lower(), qtype), (-math.inf, None))
+        expires, records = answers.get((plain(name), qtype), (-math.inf, None))
         if clock() - expires > STALE_FOR: raise
         if verbose: print(f"  no server answered; serving {name} from an answer expired {int(clock() - expires)}s ago")
         return [dict(r, ttl=STALE_TTL) for r in records]
@@ -308,7 +318,7 @@ def resolve(name, qtype=A, verbose=False, depth=0, aliases=()):
 
 def resolve_fresh(name, qtype=A, verbose=False, depth=0, aliases=()):
     if depth > 8: raise RuntimeError("too many CNAME or referral hops")
-    name = name.rstrip(".").lower()
+    name = plain(name)
     # aliases holds the names that led here by CNAME, so a chain that comes back is named, not chased.
     if name in aliases:
         raise LookupError("CNAME loop: " + " -> ".join(aliases[aliases.index(name):] + (name,)))

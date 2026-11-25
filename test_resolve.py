@@ -711,6 +711,18 @@ for cut in range(12, len(whole)):
 got = outcome(resolve.respond, struct.pack("!HHHHHH", 7, 0x0100, 1, 0, 0, 0) + b"\xc0\x0c\0\1\0\1")
 assert isinstance(got, bytes) and got[3] & 0xF == resolve.FORMERR, got
 
+# Names in other scripts go out as punycode, as dig sends them; ones too long are refused before sending.
+assert resolve.plain("MÜNCHEN.de.") == "xn--mnchen-3ya.de" and resolve.plain("_dmarc.Example.com") == "_dmarc.example.com"
+assert resolve.name_wire(resolve.plain("bücher.example")) == b"\x0dxn--bcher-kva\x07example\0"
+for long in ("a" * 64 + ".com", "a." * 127 + "com"):
+    try:
+        resolve.resolve(long)
+        raise AssertionError(f"{long[:10]}... was asked")
+    except LookupError as e:
+        assert "too long" in str(e), e
+assert resolve.plain("a" * 63 + ".com").startswith("a" * 63)
+print("IDN names turned to punycode; a 64-letter label and a 257-letter name refused")
+
 # Live: a.root-servers.net has had the same address since 1997, so both resolvers must agree.
 ours = {r["value"] for r in resolve.resolve("a.root-servers.net")}
 theirs = {ai[4][0] for ai in socket.getaddrinfo("a.root-servers.net", 53, socket.AF_INET)}

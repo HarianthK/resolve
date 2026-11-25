@@ -440,7 +440,7 @@ def validate(name, qtype, fetch=lookup, now=None):
     # The answer to name/qtype with how it was proven, following CNAMEs (each one signed too).
     # Raises Bogus for a forgery or a broken chain and Insecure for an answer no one signed.
     now = int(time.time()) if now is None else now
-    name, chain, seen = name.rstrip(".").lower(), [], {}
+    name, chain, seen = resolve.plain(name), [], {}
     for _ in range(8):
         records, sigs = fetch(name, qtype)
         here = [r for r in records if r["name"].lower() == name and r["type"] == qtype]

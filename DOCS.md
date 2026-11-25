@@ -625,3 +625,21 @@ asked. If every server says it, the first such reply is used, so the lookup
 still fails once and does not loop. The test makes two of the three .com
 servers lame, each in turn, and then all three; run against the old code, the
 first case fails.
+
+## Names in other scripts, and names too long to send
+
+`münchen.de` went out as raw UTF-8 bytes, which no zone holds, so the
+lookup ended at the de servers with no answer. DNS carries such names as
+punycode, `xn--mnchen-3ya.de`, which is what dig, nslookup and browsers send.
+A label with letters outside ASCII is now converted with Python's `idna` codec;
+ASCII labels are left alone, so `_dmarc` and `*` still work.
+
+A label of 64 letters or more was sent anyway. Its length byte then reads as
+the start of a compression pointer, so the server got a broken question and
+the error came back as "no answer and no referral". Names now stop before
+sending when a label passes 63 characters or the name passes 253, the limits
+in RFC 1035.
+
+Both happen in `plain()`, which `resolve()` and `dnssec.validate()` call on
+the way in. `münchen.de` now resolves to 194.246.166.100, the address Google's
+8.8.8.8 gives. `test_resolve.py` checks the punycode and both refusals.
