@@ -643,3 +643,19 @@ in RFC 1035.
 Both happen in `plain()`, which `resolve()` and `dnssec.validate()` call on
 the way in. `münchen.de` now resolves to 194.246.166.100, the address Google's
 8.8.8.8 gives. `test_resolve.py` checks the punycode and both refusals.
+
+## A mail or service target of the root, and a misspelt type
+
+`example.com MX` failed with "none of the 6 servers asked about example.com
+answered". Every server did answer, with `0 .`: a null MX (RFC 7505), which
+says the domain takes no mail. The root name reads back as an empty string, so
+the MX value was "0 " and splitting it for the canonical form ran off the end,
+the IndexError became "a malformed reply", and each reply was thrown away in
+turn. SRV had the same split, and `0 0 0 .` is how RFC 2782 says a service is
+not offered. Both now keep the host name they read, show the root as ".", as
+dig does, and build the wire form from the name itself.
+
+A record type the table does not know, such as `MXX`, fell back to A without a
+word, so a typo gave an answer to a different question. It is now refused with
+the list of types there are. `test_resolve.py` builds a null MX and an empty SRV
+by hand and runs `example.com MXX`; the two records fail on the old code.

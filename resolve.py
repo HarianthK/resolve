@@ -137,7 +137,8 @@ def read_record(data, pos):
     if rtype in (NS, CNAME, PTR): value = read_name(data, pos)[0]; wire = name_wire(value)
     elif rtype == A: value = ".".join(str(b) for b in rdata)
     elif rtype == AAAA: value = socket.inet_ntop(socket.AF_INET6, rdata)
-    elif rtype == MX: value = f"{struct.unpack('!H', rdata[:2])[0]} {read_name(data, pos + 2)[0]}"; wire = rdata[:2] + name_wire(value.split()[1])
+    # A target of the root, ".", is a real answer: "0 ." is a null MX (RFC 7505), no mail taken.
+    elif rtype == MX: host = read_name(data, pos + 2)[0]; value = f"{struct.unpack('!H', rdata[:2])[0]} {host or '.'}"; wire = rdata[:2] + name_wire(host)
     # SRV (RFC 2782): priority, weight and port, then the host the service runs on.
     # CAA (RFC 8659): a flags byte, a tag such as issue, then which certificate authority it names.
     elif rtype == CAA: value = f'{rdata[0]} {rdata[2:2 + rdata[1]].decode("ascii", "replace")} "{rdata[2 + rdata[1]:].decode("utf-8", "replace")}"'
@@ -149,7 +150,7 @@ def read_record(data, pos):
     elif rtype == SSHFP: value = f"{rdata[0]} {rdata[1]} " + rdata[2:].hex().upper()
     elif rtype == TLSA: value = f"{rdata[0]} {rdata[1]} {rdata[2]} " + rdata[3:].hex().upper()
     elif rtype == DS: value = "{} {} {} ".format(*struct.unpack("!HBB", rdata[:4])) + rdata[4:].hex().upper()
-    elif rtype == SRV: value = "{} {} {} ".format(*struct.unpack("!HHH", rdata[:6])) + read_name(data, pos + 6)[0]; wire = rdata[:6] + name_wire(value.split()[3])
+    elif rtype == SRV: host = read_name(data, pos + 6)[0]; value = "{} {} {} ".format(*struct.unpack("!HHH", rdata[:6])) + (host or "."); wire = rdata[:6] + name_wire(host)
     # SVCB and HTTPS (RFC 9460): a priority (0 is an alias), a target name never compressed, then parameters.
     elif rtype in (SVCB, HTTPS):
         target, at = read_name(data, pos + 2)
@@ -478,7 +479,11 @@ if __name__ == "__main__":
             sys.exit()
     args = [a for a in sys.argv[1:] if not a.startswith("-")]
     if not args: sys.exit("usage: python resolve.py NAME [A|AAAA|NS|MX|TXT|SRV|PTR|CAA|HTTPS|SVCB|TLSA|SSHFP|DS|DNSKEY] [-v] [--dnssec], or -x ADDRESS, or --serve [PORT]")
-    qtype = {v: k for k, v in TYPE_NAMES.items()}.get(args[1].upper() if len(args) > 1 else "A", A)
+    # A misspelt type used to fall back to A without a word; it is refused, with the ones there are.
+    by_name = {v: k for k, v in TYPE_NAMES.items()}
+    if len(args) > 1 and args[1].upper() not in by_name:
+        sys.exit(f"resolve: {args[1]} is not a record type this knows: {' '.join(sorted(by_name))}")
+    qtype = by_name[args[1].upper()] if len(args) > 1 else A
     if "-x" in sys.argv:
         # A reverse lookup is a PTR question about the address written backwards under in-addr.arpa or ip6.arpa.
         try: args[0], qtype = ipaddress.ip_address(args[0]).reverse_pointer, PTR

@@ -1,5 +1,7 @@
 # Run: python test_resolve.py. The first check is offline; the second asks the real root servers.
 import socket
+import subprocess
+import sys
 import struct
 import threading
 
@@ -28,6 +30,18 @@ srv_q = b"\x04_sip\x04_tcp\x07example\x03com\x00" + struct.pack("!HH", resolve.S
 srv = b"\xc0\x0c" + struct.pack("!HHIH", resolve.SRV, 1, 300, 12) + struct.pack("!HHH", 10, 60, 5060) + b"\x03sip\xc0\x16"
 got = resolve.parse(struct.pack("!HHHHHH", 7, 0x8180, 1, 1, 0, 0) + srv_q + srv)["answers"][0]
 assert got["type"] == resolve.SRV and got["value"] == "10 60 5060 sip.example.com", got["value"]
+
+# A target of the root: "0 ." is a null MX (RFC 7505), as example.com has, and "0 0 0 ." an SRV
+# saying no such service. Both were read as malformed, so every server's reply was thrown away.
+mx_q = b"\x07example\x03com\x00" + struct.pack("!HH", resolve.MX, 1)
+null_mx = b"\xc0\x0c" + struct.pack("!HHIH", resolve.MX, 1, 300, 3) + b"\x00\x00\x00"
+got = resolve.parse(struct.pack("!HHHHHH", 9, 0x8180, 1, 1, 0, 0) + mx_q + null_mx)["answers"][0]
+assert got["value"] == "0 ." and got["wire"] == b"\x00\x00\x00", got
+no_srv = b"\xc0\x0c" + struct.pack("!HHIH", resolve.SRV, 1, 300, 7) + b"\x00" * 7
+got = resolve.parse(struct.pack("!HHHHHH", 10, 0x8180, 1, 1, 0, 0) + srv_q + no_srv)["answers"][0]
+assert got["value"] == "0 0 0 ." and got["wire"] == b"\x00" * 7, got
+run = subprocess.run([sys.executable, resolve.__file__, "example.com", "MXX"], capture_output=True, text=True)
+assert run.returncode == 1 and "MXX is not a record type" in run.stderr and not run.stdout, run  # was A records
 
 # PTR by hand: 1.2.0.192.in-addr.arpa names host.example, so the value is a name, not bytes.
 ptr_q = b"\x011\x012\x010\x03192\x07in-addr\x04arpa\x00" + struct.pack("!HH", resolve.PTR, 1)
